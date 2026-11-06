@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.0
+# Sothu Diary (சொத்து டைரி) – v2.1.2
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -6,6 +6,34 @@ the documents you have verified – and get a detailed, explainable **price chec
 rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-tap **த / EN**).
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
+
+## What's new in v2.1.2
+
+- **Live price check on a free Gemini key**: a quota error (HTTP 429 / RESOURCE_EXHAUSTED) now moves on to the next model
+  instead of stopping. Auto order: stable Flash (`gemini-flash-latest` first), then Flash-Lite, then previews; Pro only
+  if nothing else is listed. Quota-limited models are skipped for about an hour; the API's `retryDelay` is shown as
+  "try again after X". Every call stays grounded with Google Search (older 1.x models use `google_search_retrieval`);
+  there is never an ungrounded call. A failed refresh keeps earlier rates.
+- **One friendly bilingual error** (quota / bad key / no internet / model unavailable) with a small "Details" expander
+  for the raw API text, instead of the raw text twice.
+- **No self-comparison**: the property being checked (by id, its own source post, or anything within 50 m at the same
+  rate) is never its own comparable – in the price check and in Area rates opened from a property.
+- **Map centre fix**: maps no longer open over Central America. Cause: fitting osmdroid's bounding box to a zero-size box
+  (the property and its own listing at the same spot) – `BoundingBox.increaseByScale()` turned it into a box spanning
+  longitudes −165.7…−39.7 at zoom ~3.5. The camera is now computed by the app (centred on the property's pin, zoom
+  9–16 to fit the comparables), and no map uses an invalid (NaN / out of range / 0,0) coordinate.
+- **Soft background music** (Android): loops quietly (default 12 %) while the app is open, with a 2 s fade-in; pauses
+  in the background, during voice notes and voice typing, and for calls / other audio (audio focus, ducking).
+  Settings › Background music: on/off, volume, "Choose your own song" (copied into app storage). Note icon in the top
+  bar to stop / play.
+
+### Default background music – credit and licence
+
+- Title: "rAga kIravANI" (veena alapana and tanam), excerpt 0:02–2:42, mono 64 kbps AAC (`composeApp/src/androidMain/res/raw/bgm_default.m4a`, 1.3 MB)
+- Artist: L Ramakrishnan (recorded 1 January 2004)
+- Source: https://commons.wikimedia.org/wiki/File:Kiravani-L_Ramakrishnan.ogg (original: https://archive.org/details/LR_kIravANI)
+- Licence: Creative Commons CC0 1.0 Universal Public Domain Dedication (stated on the Commons file page)
+- No copyrighted film music is bundled; users can choose their own song.
 
 ## What's new in v2.0
 

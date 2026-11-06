@@ -49,6 +49,29 @@ interface PlatformActions {
 
     /** True where the in-app browser ("Read post" with login) is available (Android WebView). */
     val hasWebReader: Boolean get() = false
+
+    /** Soft background music (Android). */
+    val music: MusicActions get() = NoMusic
+}
+
+/** Background music: a quiet looping track while the app is in the foreground. */
+interface MusicActions {
+    val supported: Boolean
+    /** A default (royalty-free) track is bundled with the app. */
+    val hasDefaultTrack: Boolean
+    /** Applies the user's settings; [customFile] blank = the bundled default track. */
+    fun configure(enabled: Boolean, volume: Float, customFile: String)
+    /** Lets the user pick an audio file; it is copied into app storage. Returns the stored file name. */
+    fun pickTrack(onResult: (String?) -> Unit)
+    fun deleteTrack(fileName: String)
+}
+
+object NoMusic : MusicActions {
+    override val supported = false
+    override val hasDefaultTrack = false
+    override fun configure(enabled: Boolean, volume: Float, customFile: String) {}
+    override fun pickTrack(onResult: (String?) -> Unit) = onResult(null)
+    override fun deleteTrack(fileName: String) {}
 }
 
 /** Content shared into the app from another app (text and / or images already copied into app storage). */

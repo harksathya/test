@@ -174,7 +174,8 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             onlineMessage = when {
                 r == null -> S.onlineError.format(lang, "network")
                 r.error == "no_key" -> S.geminiNeedKey.of(lang)
-                r.error != null -> S.onlineError.format(lang, r.error)
+                // Shown once, by the friendly error note (from the saved lookup), not here as well.
+                r.error != null -> null
                 r.rates.isEmpty() -> S.onlineNone.format(lang, r.lookup.skipped)
                 else -> S.onlineSaved.format(lang, r.rates.size, r.lookup.skipped)
             }
@@ -297,10 +298,10 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 onFindOnline = { runLookup(force = true) },
                 findingOnline = findingOnline,
                 onlineMessage = onlineMessage,
-                lookupStatus = latest?.let { l ->
-                    if (l.error != null) S.lookupFailed.format(lang, formatDateShort(l.fetchedAt, lang), l.error)
-                    else S.lookupStatus.format(lang, formatDateShort(l.fetchedAt, lang), l.found, l.place.ifBlank { "—" })
+                lookupStatus = latest?.takeIf { it.error == null }?.let { l ->
+                    S.lookupStatus.format(lang, formatDateShort(l.fetchedAt, lang), l.found, l.place.ifBlank { "—" })
                 },
+                lookupError = latest?.takeIf { it.error != null && it.error != "no_key" },
                 needsKey = data.settings.geminiApiKey.isBlank(),
                 onSetupKey = { askGeminiKey = true },
             )
@@ -408,7 +409,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 val lat = p.lat
                 val lng = p.lng
                 if (lat != null && lng != null) {
-                    if (platformHasMap) {
+                    if (platformHasMap && com.hark.sothudiary.ui.map.isValidCoord(lat, lng)) {
                         Spacer(Modifier.height(8.dp))
                         Box(Modifier.fillMaxWidth().height(180.dp).clip(MaterialTheme.shapes.medium)) {
                             GeoMap(

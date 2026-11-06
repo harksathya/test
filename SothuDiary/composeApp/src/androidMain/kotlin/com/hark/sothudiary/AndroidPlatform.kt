@@ -39,7 +39,8 @@ class AndroidPlatform(
     private val bridge: ActivityBridge,
 ) : PlatformActions {
 
-    override val audio = AndroidAudio(context, bridge)
+    override val music = AndroidMusic(context, bridge)
+    override val audio = AndroidAudio(context, bridge, music)
     override val location: LocationActions = AndroidLocation(context, bridge)
 
     private fun start(intent: Intent) {

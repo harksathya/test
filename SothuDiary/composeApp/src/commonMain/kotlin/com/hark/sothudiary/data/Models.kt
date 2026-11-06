@@ -130,6 +130,8 @@ data class RateLookup(
     val model: String = "",
     val error: String? = null,
     val sources: List<String> = emptyList(),
+    /** v2.1.2: when the API asked us to retry after a quota error (epoch ms), else 0. */
+    val retryAt: Long = 0,
 )
 
 /** A user-made collection, e.g. "Shortlist" or "Jaihindpuram plots". */
@@ -216,6 +218,12 @@ data class AppSettings(
     val geminiModel: String = "auto",
     /** The "set up live price check" card on Home was dismissed. */
     val keyCardDismissed: Boolean = false,
+    /** v2.1.2: soft background music while the app is open (Android). On by default, at low volume. */
+    val bgmEnabled: Boolean = true,
+    /** Background music volume 0..1 (default about 12%). */
+    val bgmVolume: Float = 0.12f,
+    /** The user's own song, copied into app storage; blank = the bundled default track. */
+    val bgmFile: String = "",
 )
 
 @Serializable

@@ -247,13 +247,19 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
 
     /** Stores a live lookup and its rates, replacing an earlier lookup with the same key. */
     fun saveLookup(lookup: RateLookup, rates: List<OnlineRate>) = update { d ->
-        d.copy(
+        // A failed refresh keeps the rates found earlier (they stay usable until they age out).
+        if (lookup.error != null) d.copy(rateLookups = d.rateLookups.filterNot { it.key == lookup.key } + lookup)
+        else d.copy(
             rateLookups = d.rateLookups.filterNot { it.key == lookup.key } + lookup,
             onlineRates = d.onlineRates.filterNot { it.lookupKey == lookup.key } + rates,
         )
     }
 
     fun clearLookups() = update { d -> d.copy(rateLookups = emptyList(), onlineRates = emptyList()) }
+
+    fun setMusic(enabled: Boolean = data.settings.bgmEnabled, volume: Float = data.settings.bgmVolume, file: String = data.settings.bgmFile) = update { d ->
+        d.copy(settings = d.settings.copy(bgmEnabled = enabled, bgmVolume = volume.coerceIn(0f, 1f), bgmFile = file))
+    }
 
     fun dismissKeyCard() = update { d -> d.copy(settings = d.settings.copy(keyCardDismissed = true)) }
 

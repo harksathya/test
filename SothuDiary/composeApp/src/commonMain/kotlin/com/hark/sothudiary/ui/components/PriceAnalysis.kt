@@ -75,6 +75,7 @@ import com.hark.sothudiary.i18n.s
 import com.hark.sothudiary.i18n.slashTr
 import com.hark.sothudiary.i18n.tr
 import com.hark.sothudiary.ui.map.GeoMap
+import com.hark.sothudiary.ui.map.isValidCoord
 import com.hark.sothudiary.ui.map.MapPin
 import com.hark.sothudiary.ui.map.platformHasMap
 import com.hark.sothudiary.ui.theme.verdictArgb
@@ -290,21 +291,24 @@ fun ComparableRow(c: Comparable, basis: PriceBasis, onOpenProperty: (String) -> 
 @Composable
 fun ComparablesMap(centerLat: Double?, centerLng: Double?, centerTitle: String, centerColor: Long, est: MarketEstimate, modifier: Modifier = Modifier, onPinClick: ((String) -> Unit)? = null) {
     if (!platformHasMap) return
+    // The map is always centred on the property / searched point: without a valid pin there is no map.
+    if (!isValidCoord(centerLat, centerLng)) return
+    val cLat = centerLat!!
+    val cLng = centerLng!!
     val pins = buildList {
         est.comparables.forEachIndexed { i, c ->
             val la = c.lat; val ln = c.lng
-            if (la != null && ln != null) {
-                add(MapPin(c.propertyId ?: "m$i", la, ln, c.label, c.source.name, if (c.source == CompSource.YOUR_LISTING) 0xFF1E88E5 else 0xFF00897B, small = true))
+            if (isValidCoord(la, ln)) {
+                add(MapPin(c.propertyId ?: "m$i", la!!, ln!!, c.label, c.source.name, if (c.source == CompSource.YOUR_LISTING) 0xFF1E88E5 else 0xFF00897B, small = true))
             }
         }
-        if (centerLat != null && centerLng != null) add(MapPin("center", centerLat, centerLng, centerTitle, color = centerColor))
+        add(MapPin("center", cLat, cLng, centerTitle, color = centerColor))
     }
-    if (pins.isEmpty()) return
     Box(modifier.fillMaxWidth().height(190.dp).clip(MaterialTheme.shapes.medium)) {
         GeoMap(
             modifier = Modifier.fillMaxSize(), pins = pins,
-            centerLat = centerLat ?: pins.first().lat, centerLng = centerLng ?: pins.first().lng, zoom = 13.0,
-            cameraKey = pins.map { it.id }, fitPins = true, onPinClick = onPinClick,
+            centerLat = cLat, centerLng = cLng, zoom = 14.0,
+            cameraKey = pins.map { it.id } + "$cLat,$cLng", fitPins = true, onPinClick = onPinClick, fitAroundCenter = true,
         )
     }
     Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -337,6 +341,8 @@ fun PriceCheckCard(
     lookupStatus: String? = null,
     needsKey: Boolean = false,
     onSetupKey: (() -> Unit)? = null,
+    /** The latest live lookup when it failed: shown once, as a short friendly message with a Details expander. */
+    lookupError: com.hark.sothudiary.data.RateLookup? = null,
 ) {
     val lang = LocalLang.current
     val color = verdictColor(check.verdict)
@@ -373,7 +379,8 @@ fun PriceCheckCard(
                     Text(S.needKeyForCheck.s(), style = MaterialTheme.typography.bodySmall)
                     Button(onClick = onSetupKey, modifier = Modifier.fillMaxWidth()) { Text(S.setUpLiveCheck.s()) }
                 } else if (onFindOnline != null) FindOnlineButton(onFindOnline, findingOnline, prominent = true)
-                if (onlineMessage != null) Text(onlineMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                if (lookupError?.error != null && !needsKey) LookupErrorNote(lookupError.error, lookupError.retryAt)
+                else if (onlineMessage != null) Text(onlineMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(10.dp))
         }
@@ -441,7 +448,8 @@ fun PriceCheckCard(
             if (lookupStatus != null) Text(lookupStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (onFindOnline != null && !est.insufficient && !est.widened && !needsKey) {
                 FindOnlineButton(onFindOnline, findingOnline, prominent = false)
-                if (onlineMessage != null) Text(onlineMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                if (lookupError?.error != null) LookupErrorNote(lookupError.error, lookupError.retryAt)
+                else if (onlineMessage != null) Text(onlineMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
         }
         Spacer(Modifier.height(8.dp))

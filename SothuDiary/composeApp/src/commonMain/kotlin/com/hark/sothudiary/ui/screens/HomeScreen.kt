@@ -102,6 +102,7 @@ fun HomeScreen(ctx: AppContext) {
                         Text(S.appName.s(), color = MaterialTheme.colorScheme.onSurface, fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
                         Text(S.appTagline.s(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                     }
+                    com.hark.sothudiary.ui.components.MusicToggle()
                     LangToggle(ctx.toggleLang)
                 }
                 Spacer(Modifier.height(18.dp))

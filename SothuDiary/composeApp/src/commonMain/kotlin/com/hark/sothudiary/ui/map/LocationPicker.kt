@@ -288,7 +288,7 @@ private fun LocationPickerContent(
         }
         HorizontalDivider()
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-            val p = picked
+            val p = picked?.takeIf { isValidCoord(it.lat, it.lng) }
             val center = p?.let { it.lat to it.lng } ?: (DEFAULT_MAP_CENTER.lat to DEFAULT_MAP_CENTER.lng)
             GeoMap(
                 modifier = Modifier.fillMaxSize(),

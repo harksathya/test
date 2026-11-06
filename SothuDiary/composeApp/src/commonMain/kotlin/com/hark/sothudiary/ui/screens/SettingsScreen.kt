@@ -41,6 +41,7 @@ import com.hark.sothudiary.data.Lang
 import com.hark.sothudiary.data.ThemeMode
 import com.hark.sothudiary.i18n.tr
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Slider
 import androidx.compose.ui.Alignment
 import com.hark.sothudiary.i18n.LocalLang
 import com.hark.sothudiary.i18n.S
@@ -51,7 +52,7 @@ import com.hark.sothudiary.ui.components.AppTopBar
 import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 
-const val APP_VERSION = "2.1.1"
+const val APP_VERSION = "2.1.2"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -107,6 +108,53 @@ fun SettingsScreen(ctx: AppContext) {
                 }
             }
 
+            SectionCard(title = S.bgmTitle.s()) {
+                val music = ctx.platform.music
+                if (!music.supported) {
+                    Text(S.bgmDesktop.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text(S.bgmBody.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(S.bgmOn.s(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Switch(checked = data.settings.bgmEnabled, onCheckedChange = { ctx.repo.setMusic(enabled = it) })
+                    }
+                    var vol by remember(data.settings.bgmVolume) { mutableStateOf(data.settings.bgmVolume) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(S.bgmVolume.s() + " " + (vol * 100).toInt() + "%", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(120.dp))
+                        Slider(
+                            value = vol, onValueChange = { vol = it }, valueRange = 0f..0.6f,
+                            onValueChangeFinished = { ctx.repo.setMusic(volume = vol) },
+                            enabled = data.settings.bgmEnabled, modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Text(
+                        if (data.settings.bgmFile.isNotBlank()) S.bgmPlayingOwn.s() else S.bgmPlayingDefault.s(),
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            music.pickTrack { name ->
+                                if (name == null) return@pickTrack
+                                val old = ctx.repo.data.settings.bgmFile
+                                ctx.repo.setMusic(enabled = true, file = name)
+                                if (old.isNotBlank() && old != name) music.deleteTrack(old)
+                                ctx.platform.toast(S.bgmSongSaved.of(lang))
+                            }
+                        }) { Text(S.bgmChoose.s()) }
+                        if (data.settings.bgmFile.isNotBlank() && music.hasDefaultTrack) {
+                            TextButton(onClick = {
+                                val old = data.settings.bgmFile
+                                ctx.repo.setMusic(file = "")
+                                music.deleteTrack(old)
+                            }) { Text(S.bgmUseDefault.s()) }
+                        }
+                    }
+                    if (music.hasDefaultTrack) {
+                        Text(S.bgmCredit.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
             SectionCard(title = S.onlineServices.s()) {
                 var yt by remember(data.settings.youtubeApiKey) { mutableStateOf(data.settings.youtubeApiKey) }
                 var gm by remember(data.settings.geminiApiKey) { mutableStateOf(data.settings.geminiApiKey) }
@@ -139,6 +187,8 @@ fun SettingsScreen(ctx: AppContext) {
                 Text(S.aboutBody.s(), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(6.dp))
                 Text(S.disclaimer.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                Text(S.bgmCredit.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(24.dp))
         }

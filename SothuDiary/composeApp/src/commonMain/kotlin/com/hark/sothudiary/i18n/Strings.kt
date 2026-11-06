@@ -524,4 +524,37 @@ object S {
     val keyStep2 = Tr("Tap “Create API key” (accept the terms if asked). It is free.", "“Create API key” அழுத்துங்கள் (கேட்டால் விதிமுறைகளை ஏற்கவும்). இது இலவசம்.")
     val keyStep3 = Tr("Copy the key (it starts with “AIza…”).", "Key-ஐ நகலெடுங்கள் (அது “AIza…” என்று தொடங்கும்).")
     val keyStep4 = Tr("Come back, paste it below and tap Save.", "இங்கே திரும்பி வந்து கீழே ஒட்டி, “சேமி” அழுத்துங்கள்.")
+
+    // v2.1.2: friendly live-lookup errors (the raw API text stays under "Details")
+    val errQuota = Tr("Free Gemini limit reached for now, try again in a few minutes.", "இலவச Gemini வரம்பு முடிந்தது, சில நிமிடம் கழித்து முயற்சிக்கவும்.")
+    val errQuotaAfter = Tr("Free Gemini limit reached for now, try again after {0}.", "இலவச Gemini வரம்பு முடிந்தது, {0} கழித்து முயற்சிக்கவும்.")
+    val errBadKey = Tr("Your Gemini API key was not accepted. Check it in Settings.", "உங்கள் Gemini API key ஏற்கப்படவில்லை. அமைப்புகளில் சரிபார்க்கவும்.")
+    val errNetwork = Tr("No internet connection. Try again when you are online.", "இணைய இணைப்பு இல்லை. இணையம் கிடைத்ததும் மீண்டும் முயற்சிக்கவும்.")
+    val errModel = Tr("That Gemini model is not available for your key. Set the model to Auto in Settings.", "அந்த Gemini மாடல் உங்கள் key-க்குக் கிடைக்கவில்லை. அமைப்புகளில் மாடலை “தானியங்கி” ஆக்குங்கள்.")
+    val errOther = Tr("The live price search did not work this time. Try again later.", "நேரடி விலைத் தேடல் இம்முறை வேலை செய்யவில்லை. பிறகு முயற்சிக்கவும்.")
+    val errDetails = Tr("Details", "விவரங்கள்")
+    val errHideDetails = Tr("Hide details", "விவரங்களை மறை")
+    val durSeconds = Tr("{0} seconds", "{0} வினாடி")
+    val durMinutes = Tr("{0} min", "{0} நிமிடம்")
+    val durHours = Tr("{0} h", "{0} மணி நேரம்")
+    val lastSearchOn = Tr("Last live search: {0}", "கடைசி நேரடித் தேடல்: {0}")
+
+    // v2.1.2: background music
+    val bgmTitle = Tr("Background music", "பின்னணி இசை")
+    val bgmBody = Tr("Soft music while the app is open. It pauses when you leave the app, record or play a voice note, use voice typing, or when a call or other audio starts.", "செயலி திறந்திருக்கும்போது மென்மையான இசை. செயலியை விட்டு வெளியேறும்போது, குரல் குறிப்பைப் பதிவு / இயக்கும்போது, குரல் தட்டச்சின்போது, அழைப்பு அல்லது வேறு ஒலி தொடங்கும்போது நின்றுவிடும்.")
+    val bgmOn = Tr("Play background music", "பின்னணி இசையை இயக்கு")
+    val bgmVolume = Tr("Volume", "ஒலி அளவு")
+    val bgmChoose = Tr("Choose your own song", "உங்கள் பாடலைத் தேர்ந்தெடுக்கவும்")
+    val bgmUseDefault = Tr("Use the default music", "இயல்பு இசைக்குத் திரும்பு")
+    val bgmPlayingOwn = Tr("Playing your own song", "உங்கள் பாடல் இசைக்கிறது")
+    val bgmPlayingDefault = Tr("Playing the default veena music", "இயல்பு வீணை இசை இசைக்கிறது")
+    val bgmPickFailed = Tr("Could not use that file", "அந்தக் கோப்பைப் பயன்படுத்த முடியவில்லை")
+    val bgmSongSaved = Tr("Your song is set", "உங்கள் பாடல் அமைக்கப்பட்டது")
+    val bgmMute = Tr("Stop music", "இசையை நிறுத்து")
+    val bgmUnmute = Tr("Play music", "இசையை இயக்கு")
+    val bgmDesktop = Tr("Background music plays in the Android app.", "பின்னணி இசை Android செயலியில் மட்டும்.")
+    val bgmCredit = Tr(
+        "Default music: “rAga kIravANI” – veena alapana by L Ramakrishnan (2004). Creative Commons CC0 1.0 (public domain). Source: commons.wikimedia.org/wiki/File:Kiravani-L_Ramakrishnan.ogg",
+        "இயல்பு இசை: “ராகம் கீரவாணி” – எல். ராமகிருஷ்ணன் வாசித்த வீணை ஆலாபனை (2004). Creative Commons CC0 1.0 (பொது உரிமை). மூலம்: commons.wikimedia.org/wiki/File:Kiravani-L_Ramakrishnan.ogg",
+    )
 }

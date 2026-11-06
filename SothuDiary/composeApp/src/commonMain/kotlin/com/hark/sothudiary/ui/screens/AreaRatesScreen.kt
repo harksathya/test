@@ -77,6 +77,9 @@ import com.hark.sothudiary.ui.AppContext
 import com.hark.sothudiary.ui.Route
 import com.hark.sothudiary.ui.components.AppTopBar
 import com.hark.sothudiary.ui.components.ComparableRow
+import com.hark.sothudiary.ui.components.LookupErrorNote
+import com.hark.sothudiary.domain.unitPrice
+import com.hark.sothudiary.domain.basis
 import com.hark.sothudiary.ui.components.ComparablesMap
 import com.hark.sothudiary.ui.components.KeyValueRow
 import com.hark.sothudiary.ui.components.PriceRangeChart
@@ -143,7 +146,8 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
             if (r != null) ctx.repo.saveLookup(r.lookup, r.rates)
             lookupMsg = when {
                 r == null -> S.onlineError.format(lang, "network")
-                r.error != null -> S.onlineError.format(lang, r.error)
+                // Shown once, by the friendly error note (from the saved lookup), not here as well.
+                r.error != null -> null
                 r.rates.isEmpty() -> S.onlineNone.format(lang, r.lookup.skipped)
                 else -> S.onlineSaved.format(lang, r.rates.size, r.lookup.skipped)
             }
@@ -207,7 +211,13 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
             val t = target
             if (t != null) {
                 val names = listOfNotNull(t.name, t.nameTa)
-                val est = remember(t, group, data) { estimateMarket(AreaPoint(names, t.lat, t.lng, t.district), group, data) }
+                // Opened from a property: never use that property (or a copy of it at the same spot and price) as its own comparable.
+                val self = initialProp?.takeIf { it.lat == t.lat && it.lng == t.lng }
+                val est = remember(t, group, data, self) {
+                    val selfRate = self?.unitPrice()?.let { convertRate(it, self.type.basis(), groupBasis(group)) }
+                    estimateMarket(AreaPoint(names, t.lat, t.lng, t.district), group, data,
+                        excludePropertyId = self?.id, selfRate = selfRate, selfUrl = self?.sourceUrl.orEmpty())
+                }
                 val b = est.basis
                 SectionCard(title = S.ratesIn.f(t.name, groupTr(group).s()), icon = Icons.Filled.Insights,
                     accent = MaterialTheme.colorScheme.primary) {
@@ -235,16 +245,17 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
                     }
                     val la = t.lat; val ln = t.lng
                     val latest = if (la != null && ln != null) latestLookup(data, la, ln, group) else null
-                    if (latest != null) {
+                    if (latest != null && latest.error == null) {
                         Text(
-                            if (latest.error != null) S.lookupFailed.format(lang, formatDateShort(latest.fetchedAt, lang), latest.error)
-                            else S.lookupStatus.format(lang, formatDateShort(latest.fetchedAt, lang), latest.found, latest.place.ifBlank { "—" }),
+                            S.lookupStatus.format(lang, formatDateShort(latest.fetchedAt, lang), latest.found, latest.place.ifBlank { "—" }),
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     if (data.settings.geminiApiKey.isNotBlank()) FindOnlineButton({ lookup(t, force = true) }, finding, prominent = est.insufficient)
                     else Button(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth()) { Text(S.setUpLiveCheck.s()) }
-                    lookupMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                    val failed = latest?.error
+                    if (failed != null && failed != "no_key") LookupErrorNote(failed, latest.retryAt)
+                    else lookupMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                     if (est.comparables.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

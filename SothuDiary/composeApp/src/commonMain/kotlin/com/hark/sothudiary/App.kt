@@ -142,7 +142,16 @@ fun App(
         }
     }
 
-    CompositionLocalProvider(LocalLang provides lang) {
+    // Soft background music (Android): follows the saved settings; the top-bar note icon toggles it.
+    val st = repo.data.settings
+    LaunchedEffect(st.bgmEnabled, st.bgmVolume, st.bgmFile) { platform.music.configure(st.bgmEnabled, st.bgmVolume, st.bgmFile) }
+    val music = com.hark.sothudiary.ui.components.MusicToggleState(
+        available = platform.music.supported && (platform.music.hasDefaultTrack || st.bgmFile.isNotBlank()),
+        playing = st.bgmEnabled,
+        toggle = { repo.setMusic(enabled = !repo.data.settings.bgmEnabled) },
+    )
+
+    CompositionLocalProvider(LocalLang provides lang, com.hark.sothudiary.ui.components.LocalMusicToggle provides music) {
         SothuTheme(repo.data.settings.theme) {
             PlatformBackHandler(enabled = nav.stack.isNotEmpty() || nav.tab != Tab.HOME) { nav.back() }
             BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {

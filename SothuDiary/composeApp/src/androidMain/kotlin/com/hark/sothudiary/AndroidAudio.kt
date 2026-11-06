@@ -21,7 +21,7 @@ import androidx.core.content.ContextCompat
 import java.io.File
 
 /** Voice notes (MediaRecorder AAC / .m4a in filesDir/voice), playback and live speech-to-text. */
-class AndroidAudio(private val context: Context, private val bridge: ActivityBridge) : AudioActions {
+class AndroidAudio(private val context: Context, private val bridge: ActivityBridge, private val music: AndroidMusic? = null) : AudioActions {
 
     private val main = Handler(Looper.getMainLooper())
     private val dir: File get() = File(context.filesDir, VOICE_DIR).apply { mkdirs() }
@@ -63,6 +63,7 @@ class AndroidAudio(private val context: Context, private val bridge: ActivityBri
             r.setAudioSamplingRate(44_100)
             r.setAudioChannels(1)
             r.setOutputFile(f.absolutePath)
+            music?.hold("record", true)
             r.prepare()
             r.start()
             recorder = r
@@ -72,6 +73,7 @@ class AndroidAudio(private val context: Context, private val bridge: ActivityBri
         } catch (e: Exception) {
             runCatching { r.release() }
             f.delete()
+            music?.hold("record", false)
             false
         }
     }
@@ -84,6 +86,7 @@ class AndroidAudio(private val context: Context, private val bridge: ActivityBri
         runCatching { r.release() }
         recorder = null
         recFile = null
+        music?.hold("record", false)
         if (f == null) return null
         if (!ok || f.length() == 0L) {
             f.delete()
@@ -99,6 +102,7 @@ class AndroidAudio(private val context: Context, private val bridge: ActivityBri
         recorder = null
         recFile?.delete()
         recFile = null
+        music?.hold("record", false)
     }
 
     private fun durationOf(f: File): Long? = runCatching {
@@ -144,14 +148,16 @@ class AndroidAudio(private val context: Context, private val bridge: ActivityBri
         val f = File(dir, fileName)
         if (!f.exists()) return false
         return try {
+            music?.hold("play", true)
             val p = MediaPlayer()
             p.setDataSource(f.absolutePath)
-            p.setOnCompletionListener { onComplete() }
+            p.setOnCompletionListener { music?.hold("play", false); onComplete() }
             p.prepare()
             p.start()
             player = p
             true
         } catch (e: Exception) {
+            music?.hold("play", false)
             false
         }
     }
@@ -162,6 +168,7 @@ class AndroidAudio(private val context: Context, private val bridge: ActivityBri
         runCatching { player?.stop() }
         runCatching { player?.release() }
         player = null
+        music?.hold("play", false)
     }
     override fun seekTo(ms: Long) { runCatching { player?.seekTo(ms.toInt()) } }
     override fun positionMs(): Long = runCatching { player?.currentPosition?.toLong() }.getOrNull() ?: 0L
@@ -212,6 +219,7 @@ class AndroidAudio(private val context: Context, private val bridge: ActivityBri
             return
         }
         recognizer = r
+        music?.hold("speech", true)
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
@@ -253,6 +261,7 @@ class AndroidAudio(private val context: Context, private val bridge: ActivityBri
     override fun stopSpeech() {
         val r = recognizer ?: return
         recognizer = null
+        music?.hold("speech", false)
         runCatching { r.stopListening() }
         runCatching { r.destroy() }
     }

@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DateRange
@@ -95,6 +97,7 @@ fun AppTopBar(
         },
         actions = {
             actions()
+            MusicToggle()
             LangToggle(onToggleLang)
         },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -104,6 +107,24 @@ fun AppTopBar(
             actionIconContentColor = LocalBrand.current.onBar,
         ),
     )
+}
+
+/** Background music on / off for the top bar (one tap stops it; the choice is saved). */
+data class MusicToggleState(val available: Boolean, val playing: Boolean, val toggle: () -> Unit)
+
+val LocalMusicToggle = androidx.compose.runtime.staticCompositionLocalOf { MusicToggleState(false, false) {} }
+
+@Composable
+fun MusicToggle() {
+    val m = LocalMusicToggle.current
+    if (!m.available) return
+    IconButton(onClick = m.toggle) {
+        Icon(
+            if (m.playing) Icons.Filled.MusicNote else Icons.Filled.MusicOff,
+            contentDescription = if (m.playing) S.bgmMute.s() else S.bgmUnmute.s(),
+            tint = LocalBrand.current.onBar.copy(alpha = if (m.playing) 0.9f else 0.55f),
+        )
+    }
 }
 
 @Composable

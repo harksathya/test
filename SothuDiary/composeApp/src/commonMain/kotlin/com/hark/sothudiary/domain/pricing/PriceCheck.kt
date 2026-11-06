@@ -223,6 +223,10 @@ fun estimateMarket(
     data: AppData,
     excludePropertyId: String? = null,
     now: Long = com.hark.sothudiary.data.nowMillis(),
+    /** The checked property's own rate in this group's basis: anything within 50 m at the same rate is that listing itself. */
+    selfRate: Double? = null,
+    /** The checked property's source post: an online rate quoting that same page is the listing itself. */
+    selfUrl: String = "",
 ): MarketEstimate {
     val basis = groupBasis(group)
     val hasPin = point.lat != null && point.lng != null
@@ -258,8 +262,10 @@ fun estimateMarket(
             d,
         )
     }
+    // Never compare a property with itself (by id, by its own source page, or a copy at the same spot and price).
+    val own = cands.filterNot { isSelf(it.c, it.dist, excludePropertyId, selfRate, selfUrl) }
     // The same listing can come back from two lookups close to each other: keep one.
-    val unique = cands.distinctBy { c -> if (c.c.propertyId != null) c.c.propertyId else c.c.label.lowercase() + "|" + c.c.sourceUrl + "|" + c.c.rate.toLong() }
+    val unique = own.distinctBy { c -> if (c.c.propertyId != null) c.c.propertyId else c.c.label.lowercase() + "|" + c.c.sourceUrl + "|" + c.c.rate.toLong() }
 
     var radiusUsed: Double? = null
     var chosen: List<Cand> = emptyList()
@@ -297,6 +303,20 @@ fun estimateMarket(
     )
 }
 
+/** Within this distance (km) a comparable at the same rate as the checked property is that property itself. */
+const val SELF_MATCH_KM = 0.05
+
+/** True when [c] is the property being checked: same id, same source page, or within 50 m at the same rate. */
+fun isSelf(c: Comparable, distKm: Double?, selfId: String?, selfRate: Double?, selfUrl: String = ""): Boolean {
+    if (selfId != null && c.propertyId == selfId) return true
+    if (selfUrl.isNotBlank() && c.sourceUrl.isNotBlank() && c.sourceUrl.trimEnd('/').equals(selfUrl.trimEnd('/'), true)) return true
+    if (selfRate != null && selfRate > 0 && distKm != null && distKm < SELF_MATCH_KM) {
+        val tol = maxOf(1.0, selfRate * 0.005)
+        if (kotlin.math.abs(c.rate - selfRate) <= tol) return true
+    }
+    return false
+}
+
 /** User-entered guideline value first, then a guideline value from the live lookup near the point. */
 fun guidelineAt(point: AreaPoint, group: Int, data: AppData, now: Long = com.hark.sothudiary.data.nowMillis()): GuidelineInfo? {
     val basis = groupBasis(group)
@@ -323,7 +343,8 @@ fun guidelineAt(point: AreaPoint, group: Int, data: AppData, now: Long = com.har
 fun checkPrice(p: Property, data: AppData): PriceCheck {
     val basis = p.type.basis()
     val unit = p.unitPrice()
-    val est = estimateMarket(p.areaPoint(), p.type.group(), data, excludePropertyId = p.id)
+    val est = estimateMarket(p.areaPoint(), p.type.group(), data, excludePropertyId = p.id,
+        selfRate = unit?.let { convertRate(it, basis, groupBasis(p.type.group())) }, selfUrl = p.sourceUrl)
     val gv = est.guideline?.value
     val med = est.median
     val ratio = if (unit != null && med != null && med > 0) unit / med else null

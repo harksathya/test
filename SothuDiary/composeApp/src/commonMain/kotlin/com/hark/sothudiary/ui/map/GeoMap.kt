@@ -34,4 +34,6 @@ expect fun GeoMap(
     onTap: ((Double, Double) -> Unit)? = null,
     onPinDragged: ((String, Double, Double) -> Unit)? = null,
     onPinClick: ((String) -> Unit)? = null,
+    /** With [fitPins]: keep [centerLat]/[centerLng] (the property's pin) in the middle and zoom so all pins fit. */
+    fitAroundCenter: Boolean = false,
 )

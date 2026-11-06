@@ -65,6 +65,7 @@ import com.hark.sothudiary.ui.components.propertyImageModel
 import com.hark.sothudiary.ui.components.unitPriceLine
 import com.hark.sothudiary.ui.map.GeoMap
 import com.hark.sothudiary.ui.map.MapPin
+import com.hark.sothudiary.ui.map.isValidCoord
 import com.hark.sothudiary.ui.theme.verdictArgb
 import com.hark.sothudiary.ui.theme.verdictColor
 
@@ -78,14 +79,14 @@ fun MapScreen(ctx: AppContext) {
     var showMarket by remember { mutableStateOf(false) }
     var groupFilter by remember { mutableStateOf<Int?>(null) }
 
-    val withPins = data.properties.filter { it.lat != null && it.lng != null && (groupFilter == null || it.type.group() == groupFilter) }
-    val noPin = data.properties.count { it.lat == null || it.lng == null }
+    val withPins = data.properties.filter { isValidCoord(it.lat, it.lng) && (groupFilter == null || it.type.group() == groupFilter) }
+    val noPin = data.properties.count { !isValidCoord(it.lat, it.lng) }
     val pins = buildList {
         if (showMarket) {
             // Rates from live lookups (cache, last 30 days) – no bundled data.
             data.onlineRates.filter { isFresh(it.fetchedAt) && (groupFilter == null || it.group == groupFilter) }.forEach { r ->
                 val la = r.lat; val ln = r.lng
-                if (la != null && ln != null) add(MapPin("loc:" + r.place, la, ln, r.place, color = 0xFF78909C, small = true))
+                if (la != null && ln != null && isValidCoord(la, ln)) add(MapPin("loc:" + r.place, la, ln, r.place, color = 0xFF78909C, small = true))
             }
         }
         withPins.forEach { p ->

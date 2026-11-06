@@ -85,13 +85,20 @@ class MainActivity : ComponentActivity(), ActivityBridge {
         handleIntent(intent)
     }
 
+    override fun onStart() {
+        super.onStart()
+        platform?.music?.setForeground(true)
+    }
+
     override fun onStop() {
         super.onStop()
         platform?.audio?.stopPlayback()
+        platform?.music?.setForeground(false)
     }
 
     override fun onDestroy() {
         platform?.audio?.release()
+        platform?.music?.release()
         super.onDestroy()
     }
 

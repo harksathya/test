@@ -29,8 +29,11 @@ actual fun GeoMap(
     onTap: ((Double, Double) -> Unit)?,
     onPinDragged: ((String, Double, Double) -> Unit)?,
     onPinClick: ((String) -> Unit)?,
+    fitAroundCenter: Boolean,
 ) {
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+        @Suppress("NAME_SHADOWING")
+        val pins = pins.filter { isValidCoord(it.lat, it.lng) }
         if (pins.isNotEmpty()) {
             val minLat = pins.minOf { it.lat }; val maxLat = pins.maxOf { it.lat }
             val minLng = pins.minOf { it.lng }; val maxLng = pins.maxOf { it.lng }

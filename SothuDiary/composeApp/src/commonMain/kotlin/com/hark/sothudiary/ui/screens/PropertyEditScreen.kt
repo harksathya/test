@@ -473,7 +473,7 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val la = lat
                     val ln = lng
-                    if (la != null && ln != null) {
+                    if (la != null && ln != null && com.hark.sothudiary.ui.map.isValidCoord(la, ln)) {
                         Box(Modifier.fillMaxWidth().height(170.dp).clip(MaterialTheme.shapes.medium)) {
                             GeoMap(
                                 modifier = Modifier.fillMaxSize(),

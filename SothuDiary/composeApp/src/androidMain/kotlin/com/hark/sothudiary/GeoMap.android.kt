@@ -17,7 +17,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
@@ -93,7 +92,11 @@ actual fun GeoMap(
     onTap: ((Double, Double) -> Unit)?,
     onPinDragged: ((String, Double, Double) -> Unit)?,
     onPinClick: ((String) -> Unit)?,
+    fitAroundCenter: Boolean,
 ) {
+    // Never place or fit anything at an invalid coordinate (NaN, out of range, or 0,0).
+    @Suppress("NAME_SHADOWING")
+    val pins = pins.filter { isValidCoord(it.lat, it.lng) }
     val context = LocalContext.current
     val holder = remember { MapHolder() }
     holder.onTap = onTap
@@ -162,15 +165,32 @@ actual fun GeoMap(
             }
             if (holder.lastKey != cameraKey) {
                 holder.lastKey = cameraKey
-                val pts = pins.map { GeoPoint(it.lat, it.lng) }
                 fun move() {
-                    if (fitPins && pts.size >= 2) {
-                        val box = BoundingBox.fromGeoPointsSafe(pts).increaseByScale(1.35f)
-                        map.zoomToBoundingBox(box, false, (24 * map.context.resources.displayMetrics.density).toInt())
-                        if (map.zoomLevelDouble > 16.0) map.controller.setZoom(16.0)
-                    } else {
-                        map.controller.setZoom(zoom)
-                        map.controller.setCenter(if (fitPins && pts.size == 1) pts[0] else GeoPoint(centerLat, centerLng))
+                    val density = map.context.resources.displayMetrics.density
+                    val half = if (map.width > 0 && map.height > 0) minOf(map.width, map.height) / density / 2.0 - 28.0 else 70.0
+                    val cam = if (fitPins) {
+                        fitCamera(
+                            pins.map { it.lat to it.lng },
+                            anchorLat = if (fitAroundCenter) centerLat else null,
+                            anchorLng = if (fitAroundCenter) centerLng else null,
+                            halfExtentDp = half,
+                            minZoom = if (fitAroundCenter) 9.0 else 5.0,
+                            maxZoom = 16.0,
+                        )
+                    } else null
+                    when {
+                        cam != null -> {
+                            map.controller.setZoom(cam.zoom)
+                            map.controller.setCenter(GeoPoint(cam.lat, cam.lng))
+                        }
+                        isValidCoord(centerLat, centerLng) -> {
+                            map.controller.setZoom(zoom)
+                            map.controller.setCenter(GeoPoint(centerLat, centerLng))
+                        }
+                        pins.isNotEmpty() -> {
+                            map.controller.setZoom(zoom)
+                            map.controller.setCenter(GeoPoint(pins[0].lat, pins[0].lng))
+                        }
                     }
                 }
                 if (map.isLayoutOccurred) move() else map.addOnFirstLayoutListener { _, _, _, _, _ -> move() }
