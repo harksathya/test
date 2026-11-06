@@ -12,10 +12,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.hark.sothudiary.data.Lang
+import com.hark.sothudiary.data.ThemeMode
+import com.hark.sothudiary.i18n.tr
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
 import com.hark.sothudiary.i18n.LocalLang
 import com.hark.sothudiary.i18n.S
 import com.hark.sothudiary.i18n.f
@@ -40,13 +42,12 @@ import com.hark.sothudiary.ui.components.AppTopBar
 import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 
-const val APP_VERSION = "0.1.0"
+const val APP_VERSION = "2.0"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
     val data = ctx.repo.data
     val lang = LocalLang.current
-    var confirmClear by remember { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
@@ -67,6 +68,7 @@ fun SettingsScreen(ctx: AppContext) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(S.dataLocal.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(S.exportNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { ctx.platform.shareText("Sothu Diary backup", ctx.repo.exportJson()) }) {
@@ -80,17 +82,17 @@ fun SettingsScreen(ctx: AppContext) {
                 }
             }
 
-            SectionCard(title = S.sampleData.s()) {
-                Text(S.sampleDataBody.s(), style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(8.dp))
-                if (ctx.repo.hasSamples()) {
-                    OutlinedButton(onClick = { confirmClear = true }) {
-                        Icon(Icons.Filled.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(S.clearSamples.s())
-                    }
-                } else {
-                    OutlinedButton(onClick = { ctx.repo.loadSamples() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(S.loadSamples.s())
-                    }
+            SectionCard(title = S.appearance.s()) {
+                ChoiceChips(ThemeMode.entries, data.settings.theme, { it.tr().s() }) { ctx.repo.setTheme(it) }
+            }
+
+            SectionCard(title = S.reminders.s()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(S.remindersBody.s(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = data.settings.reminders, onCheckedChange = { on ->
+                        ctx.repo.setReminders(on)
+                        ctx.platform.setReminders(on)
+                    })
                 }
             }
 
@@ -106,16 +108,6 @@ fun SettingsScreen(ctx: AppContext) {
             }
             Spacer(Modifier.height(24.dp))
         }
-    }
-
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text(S.clearSamplesQ.s()) },
-            text = { Text(S.clearSamplesBody.s()) },
-            confirmButton = { TextButton(onClick = { ctx.repo.clearSamples(); confirmClear = false; ctx.platform.toast(S.samplesCleared.of(lang)) }) { Text(S.clear.s()) } },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(S.cancel.s()) } },
-        )
     }
 
     val importText = pendingImport

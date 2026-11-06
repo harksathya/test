@@ -39,6 +39,34 @@ class DesktopPlatform : PlatformActions {
         if (num.isNotBlank()) browse("https://wa.me/$num" + if (message.isNotBlank()) "?text=" + URLEncoder.encode(message, "UTF-8") else "")
     }
     override fun openUrl(url: String) = browse(url)
+    override fun openMap(lat: Double?, lng: Double?, label: String) {
+        val q = if (lat != null && lng != null) "$lat,$lng" else URLEncoder.encode(label, "UTF-8")
+        browse("https://www.google.com/maps/search/?api=1&query=$q")
+    }
+    override val audio: AudioActions = NoAudio
+    override val location: LocationActions = object : LocationActions {
+        override val supported = false
+        override fun currentLocation(onResult: (LatLng?) -> Unit) = onResult(null)
+    }
+    override fun setReminders(enabled: Boolean) {}
+    private val imagesDir = File(System.getProperty("user.home"), ".sothudiary/images")
+    override fun imagePath(fileName: String): String? =
+        File(imagesDir, fileName).takeIf { fileName.isNotBlank() && it.exists() }?.absolutePath
+    override fun pickImage(onResult: (String?) -> Unit) {
+        val dialog = FileDialog(null as Frame?, "Photo", FileDialog.LOAD)
+        dialog.isVisible = true
+        val dir = dialog.directory
+        val name = dialog.file
+        if (dir == null || name == null) return onResult(null)
+        val ext = name.substringAfterLast('.', "jpg").lowercase().take(5)
+        imagesDir.mkdirs()
+        val out = File(imagesDir, "img_" + System.currentTimeMillis() + "." + ext)
+        onResult(runCatching { File(dir, name).copyTo(out); out.name }.getOrNull())
+    }
+    override fun deleteImage(fileName: String) {
+        if (fileName.isNotBlank() && !fileName.contains('/')) File(imagesDir, fileName).delete()
+    }
+    override fun recognizeText(fileName: String, onResult: (String?) -> Unit) = onResult(null)
     override fun shareText(subject: String, text: String) {
         val dialog = FileDialog(null as Frame?, subject, FileDialog.SAVE)
         dialog.file = "sothu_diary_backup.json"

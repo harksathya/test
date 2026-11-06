@@ -1,5 +1,12 @@
 package com.hark.sothudiary
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -61,20 +68,37 @@ import com.hark.sothudiary.ui.screens.PropertyDetailScreen
 import com.hark.sothudiary.ui.screens.PropertyEditScreen
 import com.hark.sothudiary.ui.screens.PropertyListScreen
 import com.hark.sothudiary.ui.screens.SettingsScreen
+import com.hark.sothudiary.ui.screens.HomeScreen
+import com.hark.sothudiary.ui.screens.MapScreen
+import com.hark.sothudiary.ui.screens.MoreScreen
+import com.hark.sothudiary.ui.screens.AreaRatesScreen
+import com.hark.sothudiary.ui.screens.FolderViewScreen
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.QueryStats
 import com.hark.sothudiary.ui.theme.SothuTheme
 
 private fun Tab.icon(): ImageVector = when (this) {
+    Tab.HOME -> Icons.Filled.Dashboard
     Tab.PROPERTIES -> Icons.Filled.HomeWork
-    Tab.BROKERS -> Icons.Filled.Groups
+    Tab.MAP -> Icons.Filled.Map
     Tab.FOLLOWUPS -> Icons.Filled.Event
+    Tab.MORE -> Icons.Filled.Menu
+    Tab.BROKERS -> Icons.Filled.Groups
+    Tab.AREA_RATES -> Icons.Filled.QueryStats
     Tab.GUIDELINES -> Icons.Filled.Gavel
     Tab.SETTINGS -> Icons.Filled.Settings
 }
 
 private fun Tab.label(): Tr = when (this) {
+    Tab.HOME -> S.tabHome
     Tab.PROPERTIES -> S.tabProperties
-    Tab.BROKERS -> S.tabBrokers
+    Tab.MAP -> S.tabMap
     Tab.FOLLOWUPS -> S.tabFollowUps
+    Tab.MORE -> S.tabMore
+    Tab.BROKERS -> S.tabBrokers
+    Tab.AREA_RATES -> S.tabAreaRates
     Tab.GUIDELINES -> S.tabGuidelines
     Tab.SETTINGS -> S.tabSettings
 }
@@ -87,29 +111,37 @@ private fun Tab.label(): Tr = when (this) {
 fun App(
     repo: JsonRepository,
     platform: PlatformActions,
-    sharedText: String? = null,
+    shared: SharedContent? = null,
     onSharedConsumed: () -> Unit = {},
+    openFollowUps: Boolean = false,
+    onOpenFollowUpsConsumed: () -> Unit = {},
 ) {
     val nav = remember { Nav() }
     val filters = remember { FilterState() }
     val lang = repo.data.settings.lang
 
-    LaunchedEffect(sharedText) {
-        val text = sharedText
-        if (!text.isNullOrBlank()) {
+    LaunchedEffect(shared) {
+        val sc = shared
+        if (sc != null && (sc.text.isNotBlank() || sc.imageFiles.isNotEmpty())) {
+            val text = sc.text
             val url = extractUrl(text) ?: ""
             val caption = (if (url.isNotEmpty()) text.replace(url, "") else text).trim()
             nav.switchTab(Tab.PROPERTIES)
-            nav.select(Route.PropertyEdit(id = null, prefillUrl = url, prefillCaption = caption))
+            nav.select(Route.PropertyEdit(id = null, prefillUrl = url, prefillCaption = caption, prefillImages = sc.imageFiles))
             onSharedConsumed()
         }
     }
 
+    LaunchedEffect(openFollowUps) {
+        if (openFollowUps) {
+            nav.switchTab(Tab.FOLLOWUPS)
+            onOpenFollowUpsConsumed()
+        }
+    }
+
     CompositionLocalProvider(LocalLang provides lang) {
-        SothuTheme {
-            PlatformBackHandler(enabled = nav.stack.isNotEmpty() || nav.tab != Tab.PROPERTIES) {
-                if (nav.stack.isNotEmpty()) nav.pop() else nav.switchTab(Tab.PROPERTIES)
-            }
+        SothuTheme(repo.data.settings.theme) {
+            PlatformBackHandler(enabled = nav.stack.isNotEmpty() || nav.tab != Tab.HOME) { nav.back() }
             BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 val wide = maxWidth >= 600.dp
                 val ctx = AppContext(
@@ -137,6 +169,7 @@ private fun overdueCount(ctx: AppContext): Int {
 @Composable
 private fun TabIcon(ctx: AppContext, t: Tab) {
     val n = if (t == Tab.FOLLOWUPS) overdueCount(ctx) else 0
+
     if (n > 0) {
         BadgedBox(badge = { Badge { Text(n.toString()) } }) { Icon(t.icon(), contentDescription = null) }
     } else {
@@ -146,17 +179,25 @@ private fun TabIcon(ctx: AppContext, t: Tab) {
 
 @Composable
 private fun PhoneLayout(ctx: AppContext) {
-    val top = ctx.nav.top
-    if (top != null) {
-        RouteScreen(ctx, top)
-        return
+    AnimatedContent(
+        targetState = ctx.nav.top,
+        transitionSpec = {
+            (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 10 }) togetherWith fadeOut(tween(150))
+        },
+        label = "route",
+    ) { r ->
+        if (r != null) RouteScreen(ctx, r) else PhoneTabs(ctx)
     }
+}
+
+@Composable
+private fun PhoneTabs(ctx: AppContext) {
     Scaffold(
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                Tab.entries.forEach { t ->
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+                Tab.entries.filter { it.inBottomBar }.forEach { t ->
                     NavigationBarItem(
-                        selected = ctx.nav.tab == t,
+                        selected = ctx.nav.tab == t || (t == Tab.MORE && !ctx.nav.tab.inBottomBar),
                         onClick = { ctx.nav.switchTab(t) },
                         icon = { TabIcon(ctx, t) },
                         label = { Text(t.label().s(), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) },
@@ -165,7 +206,9 @@ private fun PhoneLayout(ctx: AppContext) {
             }
         },
     ) { padding ->
-        Box(Modifier.padding(padding)) { TabScreen(ctx, selectedId = null) }
+        Box(Modifier.padding(padding)) {
+            Crossfade(targetState = ctx.nav.tab, animationSpec = tween(180), label = "tab") { t -> TabScreen(ctx, selectedId = null, tab = t) }
+        }
     }
 }
 
@@ -174,7 +217,7 @@ private fun WideLayout(ctx: AppContext) {
     Row(Modifier.fillMaxSize()) {
         NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
             Spacer(Modifier.height(12.dp))
-            Tab.entries.forEach { t ->
+            Tab.entries.filter { it != Tab.MORE }.forEach { t ->
                 NavigationRailItem(
                     selected = ctx.nav.tab == t,
                     onClick = { ctx.nav.switchTab(t) },
@@ -190,24 +233,33 @@ private fun WideLayout(ctx: AppContext) {
             is Route.BrokerDetail -> top.id
             else -> null
         }
-        Box(Modifier.weight(0.42f).fillMaxHeight()) { TabScreen(ctx, selectedId) }
-        VerticalDivider()
-        Box(Modifier.weight(0.58f).fillMaxHeight()) {
-            if (top != null) {
-                RouteScreen(ctx, top)
-            } else {
-                EmptyState(Icons.Filled.TouchApp, S.selectSomething.s(), S.selectSomethingBody.s())
+        val listTab = ctx.nav.tab == Tab.PROPERTIES || ctx.nav.tab == Tab.BROKERS || ctx.nav.tab == Tab.FOLLOWUPS
+        if (!listTab && top == null) {
+            Box(Modifier.weight(1f).fillMaxHeight()) { TabScreen(ctx, selectedId) }
+        } else {
+            Box(Modifier.weight(0.42f).fillMaxHeight()) { TabScreen(ctx, selectedId) }
+            VerticalDivider()
+            Box(Modifier.weight(0.58f).fillMaxHeight()) {
+                if (top != null) {
+                    RouteScreen(ctx, top)
+                } else {
+                    EmptyState(Icons.Filled.TouchApp, S.selectSomething.s(), S.selectSomethingBody.s())
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TabScreen(ctx: AppContext, selectedId: String?) {
-    when (ctx.nav.tab) {
+private fun TabScreen(ctx: AppContext, selectedId: String?, tab: Tab = ctx.nav.tab) {
+    when (tab) {
+        Tab.HOME -> HomeScreen(ctx)
         Tab.PROPERTIES -> PropertyListScreen(ctx, selectedId)
-        Tab.BROKERS -> BrokerListScreen(ctx, selectedId)
+        Tab.MAP -> MapScreen(ctx)
         Tab.FOLLOWUPS -> FollowUpsScreen(ctx)
+        Tab.MORE -> MoreScreen(ctx)
+        Tab.BROKERS -> BrokerListScreen(ctx, selectedId)
+        Tab.AREA_RATES -> AreaRatesScreen(ctx, null, null, onBack = null)
         Tab.GUIDELINES -> GuidelinesScreen(ctx)
         Tab.SETTINGS -> SettingsScreen(ctx)
     }
@@ -221,5 +273,7 @@ private fun RouteScreen(ctx: AppContext, r: Route) {
         is Route.BrokerDetail -> BrokerDetailScreen(ctx, r.id)
         is Route.BrokerEdit -> BrokerEditScreen(ctx, r)
         is Route.InteractionEdit -> InteractionEditScreen(ctx, r)
+        is Route.FolderView -> FolderViewScreen(ctx, r)
+        is Route.AreaRates -> AreaRatesScreen(ctx, r.locality, r.group, onBack = { ctx.nav.pop() })
     }
 }

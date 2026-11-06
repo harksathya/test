@@ -129,7 +129,7 @@ private fun FollowUpCard(ctx: AppContext, i: Interaction, now: Long) {
                 )
                 if (b != null && p != null) Text(b.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (i.promises.isNotBlank()) {
-                    Text(S.promisesLabel.s() + ": " + i.promises, style = MaterialTheme.typography.bodySmall, color = Color(0xFF8A5A00), modifier = Modifier.padding(top = 2.dp))
+                    Text(S.promisesLabel.s() + ": " + i.promises, style = MaterialTheme.typography.bodySmall, color = com.hark.sothudiary.ui.theme.LocalBrand.current.warnText, modifier = Modifier.padding(top = 2.dp))
                 } else if (i.summary.isNotBlank()) {
                     Text(i.summary, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }

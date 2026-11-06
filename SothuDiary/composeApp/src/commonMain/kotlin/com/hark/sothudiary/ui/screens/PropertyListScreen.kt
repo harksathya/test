@@ -70,6 +70,33 @@ import com.hark.sothudiary.ui.components.AppTopBar
 import com.hark.sothudiary.ui.components.EmptyState
 import com.hark.sothudiary.ui.components.MultiChips
 import com.hark.sothudiary.ui.components.PropertyCard
+import com.hark.sothudiary.ui.components.PrimaryButton
+import com.hark.sothudiary.ui.components.bucket
+import com.hark.sothudiary.ui.components.propertyImageModel
+import com.hark.sothudiary.ui.components.sourceBrush
+import com.hark.sothudiary.ui.GroupBy
+import com.hark.sothudiary.ui.ListMode
+import com.hark.sothudiary.data.SourcePlatform
+import com.hark.sothudiary.domain.normalizeLocation
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Workspaces
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextOverflow
 
 fun nextFollowUp(propertyId: String, data: AppData): Long? =
     data.interactions.filter { it.propertyId == propertyId && !it.followUpDone && it.followUpAt != null }
@@ -111,6 +138,29 @@ fun SortBy.label(): String = when (this) {
 }
 
 @Composable
+fun GroupBy.label(): String = when (this) {
+    GroupBy.NONE -> S.groupNone.s()
+    GroupBy.SOURCE -> S.groupSource.s()
+    GroupBy.LOCATION -> S.groupLocation.s()
+    GroupBy.TYPE -> S.groupType.s()
+    GroupBy.STATUS -> S.groupStatus.s()
+}
+
+/** Group key + display title for a property under a grouping. Keys are stable across languages. */
+@Composable
+fun groupOf(p: Property, g: GroupBy): Pair<String, String> = when (g) {
+    GroupBy.NONE -> "" to ""
+    GroupBy.SOURCE -> p.sourcePlatform.bucket().name to (if (p.sourcePlatform.bucket() == SourcePlatform.OTHER) S.othersSource.s() else p.sourcePlatform.tr().s())
+    GroupBy.LOCATION -> {
+        val loc = p.locality.ifBlank { p.taluk }.ifBlank { p.district }.trim()
+        (if (loc.isBlank()) "~" else normalizeLocation(loc)) to loc.ifBlank { S.noLocation.s() }
+    }
+    GroupBy.TYPE -> p.type.name to p.type.tr().s()
+    GroupBy.STATUS -> p.status.ordinal.toString() to p.status.tr().s()
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@Composable
 fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
     val data = ctx.repo.data
     val f = ctx.filters
@@ -122,8 +172,8 @@ fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
     Scaffold(
         topBar = {
             AppTopBar(
-                title = S.appName.s(),
-                subtitle = S.appTagline.s(),
+                title = S.tabProperties.s(),
+                subtitle = S.nResults.f(data.properties.size),
                 onToggleLang = ctx.toggleLang,
             )
         },
@@ -134,57 +184,89 @@ fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
                 text = { Text(S.addProperty.s()) },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(18.dp),
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 1.dp) {
+            Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = f.query,
-                            onValueChange = { f.query = it },
-                            placeholder = { Text(S.searchHint.s()) },
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                            trailingIcon = {
-                                if (f.query.isNotEmpty()) IconButton(onClick = { f.query = "" }) { Icon(Icons.Filled.Clear, contentDescription = S.clear.s()) }
-                            },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                            shape = MaterialTheme.shapes.large,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        IconButton(onClick = { f.showFilters = !f.showFilters }) {
-                            BadgedBox(badge = { if (f.activeCount() > 0) Badge { Text(f.activeCount().toString()) } }) {
-                                Icon(Icons.Filled.FilterList, contentDescription = S.filters.s(), tint = MaterialTheme.colorScheme.primary)
-                            }
+                    // List / Folders switch
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        ListMode.entries.forEachIndexed { i, m ->
+                            SegmentedButton(
+                                selected = f.mode == m,
+                                onClick = { f.mode = m },
+                                shape = SegmentedButtonDefaults.itemShape(i, ListMode.entries.size),
+                                icon = { Icon(if (m == ListMode.LIST) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.Folder, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            ) { Text(if (m == ListMode.LIST) S.modeList.s() else S.modeFolders.s()) }
                         }
-                        Box {
-                            IconButton(onClick = { sortOpen = true }) {
-                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = S.sort.s(), tint = MaterialTheme.colorScheme.primary)
+                    }
+                    if (f.mode == ListMode.LIST) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = f.query,
+                                onValueChange = { f.query = it },
+                                placeholder = { Text(S.searchHint.s(), maxLines = 1) },
+                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                                trailingIcon = {
+                                    if (f.query.isNotEmpty()) IconButton(onClick = { f.query = "" }) { Icon(Icons.Filled.Clear, contentDescription = S.clear.s()) }
+                                },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(28.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            IconButton(onClick = { f.showFilters = !f.showFilters }) {
+                                BadgedBox(badge = { if (f.activeCount() > 0) Badge { Text(f.activeCount().toString()) } }) {
+                                    Icon(Icons.Filled.FilterList, contentDescription = S.filters.s(), tint = MaterialTheme.colorScheme.primary)
+                                }
                             }
-                            DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
-                                SortBy.entries.forEach { s ->
-                                    DropdownMenuItem(
-                                        text = { Text(s.label(), fontWeight = if (s == f.sort) FontWeight.Bold else FontWeight.Normal) },
-                                        onClick = { f.sort = s; sortOpen = false },
-                                    )
+                            Box {
+                                IconButton(onClick = { sortOpen = true }) {
+                                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = S.sort.s(), tint = MaterialTheme.colorScheme.primary)
+                                }
+                                DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+                                    SortBy.entries.forEach { s ->
+                                        DropdownMenuItem(
+                                            text = { Text(s.label(), fontWeight = if (s == f.sort) FontWeight.Bold else FontWeight.Normal) },
+                                            onClick = { f.sort = s; sortOpen = false },
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (f.showFilters) {
-                        FilterPanel(f)
-                    }
-                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            S.nResults.f(list.size), style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
-                        )
-                        Text(S.sortedBy.f(f.sort.label()), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        if (f.showFilters) FilterPanel(f)
+                        // Group-by chips
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Workspaces, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                            GroupBy.entries.forEach { g ->
+                                FilterChip(
+                                    selected = f.group == g,
+                                    onClick = { f.group = g; f.collapsed = emptySet() },
+                                    label = { Text(g.label()) },
+                                    shape = RoundedCornerShape(50),
+                                )
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(S.nResults.f(list.size), style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            Text(S.sortedBy.f(f.sort.label()), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
+            }
+            if (f.mode == ListMode.FOLDERS) {
+                Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                    Column {
+                        SourcesAndFolders(ctx, checks)
+                        Spacer(Modifier.height(96.dp))
+                    }
+                }
+                return@Column
             }
             if (list.isEmpty()) {
                 EmptyState(
@@ -193,24 +275,64 @@ fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
                     if (data.properties.isEmpty()) S.noPropertiesBody.s() else S.noMatchesBody.s(),
                 ) {
                     if (data.properties.isNotEmpty()) TextButton(onClick = { f.clear(); f.query = "" }) { Text(S.clearFilters.s()) }
+                    else PrimaryButton(S.addProperty.s(), { ctx.nav.select(Route.PropertyEdit(null)) }, icon = Icons.Filled.Add)
                 }
             } else {
+                val groups: List<Triple<String, String, List<Property>>> = if (f.group == GroupBy.NONE) listOf(Triple("", "", list)) else {
+                    val keyed = list.map { p -> groupOf(p, f.group) to p }
+                    keyed.groupBy({ it.first.first }, { it }).map { (k, v) -> Triple(k, v.first().first.second, v.map { it.second }) }
+                        .sortedWith(compareBy({ if (f.group == GroupBy.LOCATION && it.first == "~") 1 else 0 }, { if (f.group == GroupBy.STATUS) it.first else it.second.lowercase() }))
+                }
                 LazyColumn(
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(list, key = { it.id }) { p ->
-                        PropertyCard(
-                            p = p,
-                            broker = p.brokerId?.let { brokers[it] },
-                            check = checks[p.id],
-                            nextFollowUp = nextFollowUp(p.id, data),
-                            selected = ctx.wide && p.id == selectedId,
-                            onClick = { ctx.nav.select(Route.PropertyDetail(p.id)) },
-                        )
+                    groups.forEach { (key, title, items) ->
+                        if (f.group != GroupBy.NONE) {
+                            stickyHeader(key = "h_$key") {
+                                GroupHeader(title, items.size, collapsed = key in f.collapsed, brush = if (f.group == GroupBy.SOURCE) sourceBrush(items.first().sourcePlatform) else null) {
+                                    f.collapsed = if (key in f.collapsed) f.collapsed - key else f.collapsed + key
+                                }
+                            }
+                        }
+                        if (key !in f.collapsed) {
+                            items(items, key = { "p_" + it.id }) { p ->
+                                Box(Modifier.animateItem()) {
+                                    PropertyCard(
+                                        p = p,
+                                        broker = p.brokerId?.let { brokers[it] },
+                                        check = checks[p.id],
+                                        nextFollowUp = nextFollowUp(p.id, data),
+                                        selected = ctx.wide && p.id == selectedId,
+                                        image = propertyImageModel(ctx.platform, p),
+                                        onClick = { ctx.nav.select(Route.PropertyDetail(p.id)) },
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun GroupHeader(title: String, count: Int, collapsed: Boolean, brush: Brush?, onToggle: () -> Unit) {
+    Surface(
+        onClick = onToggle,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp,
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(10.dp).clip(CircleShape).background(brush ?: Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary))))
+            Spacer(Modifier.width(10.dp))
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Badge(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) { Text(count.toString()) }
+            Spacer(Modifier.width(6.dp))
+            Icon(if (collapsed) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess, contentDescription = null)
         }
     }
 }

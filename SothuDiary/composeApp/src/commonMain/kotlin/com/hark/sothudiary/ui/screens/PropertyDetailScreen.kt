@@ -86,6 +86,21 @@ import com.hark.sothudiary.ui.components.sizeLine
 import com.hark.sothudiary.ui.components.unitPriceLine
 import com.hark.sothudiary.ui.theme.statusColor
 import com.hark.sothudiary.ui.theme.verdictColor
+import com.hark.sothudiary.ui.theme.verdictArgb
+import com.hark.sothudiary.ui.theme.LocalBrand
+import com.hark.sothudiary.ui.map.GeoMap
+import com.hark.sothudiary.ui.map.MapPin
+import com.hark.sothudiary.ui.map.platformHasMap
+import com.hark.sothudiary.ui.components.VoiceNotePlayer
+import com.hark.sothudiary.domain.group
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material3.FilledTonalButton
+import com.hark.sothudiary.ui.components.PropertyImage
+import com.hark.sothudiary.ui.components.propertyImageModel
+import com.hark.sothudiary.ui.components.sourceIcon
 
 const val TN_REGINET_URL = "https://tnreginet.gov.in/portal/"
 
@@ -136,13 +151,41 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // ---- Hero photo ----
+            val image = propertyImageModel(ctx.platform, p)
+            PropertyImage(image, p.type, Modifier.fillMaxWidth().height(if (ctx.wide) 240.dp else 210.dp).clip(RoundedCornerShape(20.dp))) {
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))))
+                Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (p.sourceUrl.isNotBlank()) {
+                        FilledTonalButton(onClick = { ctx.platform.openUrl(p.sourceUrl) }) {
+                            Icon(sourceIcon(p.sourcePlatform), contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(S.openPost.s())
+                        }
+                    }
+                    FilledTonalButton(onClick = {
+                        ctx.platform.pickImage { name ->
+                            if (name != null) {
+                                if (p.imageFile.isNotBlank()) ctx.platform.deleteImage(p.imageFile)
+                                ctx.repo.setPropertyImage(p.id, name, null)
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Filled.AddAPhoto, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                        Text(if (p.imageFile.isBlank()) S.addPhoto.s() else S.changePhoto.s())
+                    }
+                }
+                Text(
+                    if (p.askingPrice > 0) priceShort(p.askingPrice, lang) else S.priceOnRequest.s(),
+                    color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
+                )
+            }
+
             // ---- Header ----
             SectionCard {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Pill(p.type.tr().s(), MaterialTheme.colorScheme.primary)
                     Pill(p.status.tr().s(), statusColor(p.status))
                     Pill(check.verdict.tr().s(), verdictColor(check.verdict), filled = check.verdict != Verdict.UNKNOWN)
-                    if (p.sample) Pill(S.sample.s(), Color(0xFF8D6E63))
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(p.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -150,11 +193,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                     Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(p.locationLine().ifBlank { "-" }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    if (p.askingPrice > 0) priceShort(p.askingPrice, lang) else S.priceOnRequest.s(),
-                    style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary,
-                )
+                Spacer(Modifier.height(8.dp))
                 Text(unitPriceLine(p), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(4.dp))
                 Text(S.sizeLabel.s() + ": " + sizeLine(p), style = MaterialTheme.typography.bodyMedium)
@@ -166,7 +205,17 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             }
 
             WorthItCard(worth)
-            PriceCheckCard(p, check) { ctx.platform.openUrl(TN_REGINET_URL) }
+            PriceCheckCard(
+                p, check,
+                onOpenProperty = { ctx.nav.push(Route.PropertyDetail(it)) },
+                onOpenUrl = { ctx.platform.openUrl(it) },
+                onAreaRates = { ctx.nav.push(Route.AreaRates(p.locality.ifBlank { null }, p.type.group())) },
+            )
+
+            // ---- Folders ----
+            SectionCard(title = S.folders.s(), icon = Icons.Filled.Folder) {
+                FolderChips(ctx, p)
+            }
 
             // ---- Status pipeline ----
             SectionCard(title = S.status.s()) {
@@ -242,18 +291,30 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             }
 
             // ---- Location ----
-            SectionCard(title = S.location.s()) {
-                Text(p.locationLine().ifBlank { "-" })
+            SectionCard(title = S.location.s(), icon = Icons.Filled.LocationOn) {
+                Text(p.locationLine().ifBlank { "-" }, fontWeight = FontWeight.Medium)
+                if (p.address.isNotBlank()) Text(p.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val lat = p.lat
                 val lng = p.lng
                 if (lat != null && lng != null) {
-                    Text(S.coordinates.s() + ": " + dec(lat, 5) + ", " + dec(lng, 5), style = MaterialTheme.typography.bodySmall)
+                    if (platformHasMap) {
+                        Spacer(Modifier.height(8.dp))
+                        Box(Modifier.fillMaxWidth().height(180.dp).clip(MaterialTheme.shapes.medium)) {
+                            GeoMap(
+                                modifier = Modifier.fillMaxSize(),
+                                pins = listOf(MapPin(p.id, lat, lng, p.title, color = verdictArgb(check.verdict))),
+                                centerLat = lat, centerLng = lng, zoom = 15.0, cameraKey = lat to lng,
+                            )
+                        }
+                    }
+                    Text(S.coordinates.s() + ": " + dec(lat, 5) + ", " + dec(lng, 5), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                } else {
+                    Text(S.noPinYet.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { ctx.nav.push(Route.PropertyEdit(p.id)) }) { Text(S.pickOnMap.s()) }
                 }
-                TextButton(onClick = {
-                    val q = if (lat != null && lng != null) "$lat,$lng" else p.locationLine().replace(" ", "+")
-                    ctx.platform.openUrl("https://www.google.com/maps/search/?api=1&query=$q")
-                }) {
-                    Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(S.openMap.s())
+                TextButton(onClick = { ctx.platform.openMap(lat, lng, p.locationLine().ifBlank { p.title }) }) {
+                    Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(S.openGoogleMaps.s())
                 }
             }
 
@@ -281,7 +342,13 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             title = { Text(S.deletePropertyQ.s()) },
             text = { Text(S.deletePropertyBody.s()) },
             confirmButton = {
-                TextButton(onClick = { confirmDelete = false; ctx.repo.deleteProperty(p.id); ctx.nav.pop() }) {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    data.interactions.filter { it.propertyId == p.id }.flatMap { it.voiceNotes }.forEach { ctx.platform.audio.deleteAudio(it.fileName) }
+                    if (p.imageFile.isNotBlank()) ctx.platform.deleteImage(p.imageFile)
+                    ctx.repo.deleteProperty(p.id)
+                    ctx.nav.pop()
+                }) {
                     Text(S.delete.s(), color = MaterialTheme.colorScheme.error)
                 }
             },
@@ -307,7 +374,6 @@ fun InteractionTimeline(ctx: AppContext, items: List<Interaction>, data: AppData
                 Pill(i.type.tr().s(), MaterialTheme.colorScheme.secondary)
                 Spacer(Modifier.width(8.dp))
                 Text(formatDateTime(i.at, lang), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                if (i.sample) Pill(S.sample.s(), Color(0xFF8D6E63))
             }
             if (showProperty && property != null) {
                 Text(property.title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
@@ -330,8 +396,13 @@ fun InteractionTimeline(ctx: AppContext, items: List<Interaction>, data: AppData
                 }
             }
             if (i.summary.isNotBlank()) Text(i.summary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 2.dp))
+            if (i.voiceNotes.isNotEmpty()) {
+                Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    i.voiceNotes.forEach { vn -> VoiceNotePlayer(ctx, vn, onDelete = null) }
+                }
+            }
             if (i.promises.isNotBlank()) {
-                Text(S.promisesLabel.s() + ": " + i.promises, style = MaterialTheme.typography.bodySmall, color = Color(0xFF8A5A00), modifier = Modifier.padding(top = 2.dp))
+                Text(S.promisesLabel.s() + ": " + i.promises, style = MaterialTheme.typography.bodySmall, color = LocalBrand.current.warnText, modifier = Modifier.padding(top = 2.dp))
             }
             val fu = i.followUpAt
             if (fu != null) {

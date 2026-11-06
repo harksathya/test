@@ -55,7 +55,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import com.hark.sothudiary.ui.theme.LocalBrand
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hark.sothudiary.data.Lang
@@ -95,10 +97,10 @@ fun AppTopBar(
             LangToggle(onToggleLang)
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            titleContentColor = MaterialTheme.colorScheme.onPrimary,
-            navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
-            actionIconContentColor = MaterialTheme.colorScheme.onPrimary,
+            containerColor = LocalBrand.current.bar,
+            titleContentColor = LocalBrand.current.onBar,
+            navigationIconContentColor = LocalBrand.current.onBar,
+            actionIconContentColor = LocalBrand.current.onBar,
         ),
     )
 }
@@ -151,20 +153,26 @@ fun SectionCard(
     title: String? = null,
     modifier: Modifier = Modifier,
     accent: Color? = null,
+    icon: ImageVector? = null,
     trailing: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, accent?.copy(alpha = 0.5f) ?: MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, accent?.copy(alpha = 0.45f) ?: MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (LocalBrand.current.dark) 0.dp else 1.5.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
             if (title != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (accent != null) {
+                    if (accent != null && icon == null) {
                         Box(Modifier.size(10.dp).background(accent, CircleShape))
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    if (icon != null) {
+                        Icon(icon, contentDescription = null, tint = accent ?: MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                     }
                     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -241,7 +249,11 @@ fun Field(
     singleLine: Boolean = true,
     minLines: Int = 1,
     supporting: String? = null,
+    error: String? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
+    autoFilled: Boolean = false,
 ) {
+    val auto = autoFilled && error == null
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -250,7 +262,19 @@ fun Field(
         singleLine = singleLine,
         minLines = minLines,
         keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-        supportingText = if (supporting != null) ({ Text(supporting) }) else null,
+        supportingText = when {
+            error != null -> ({ Text(error, color = MaterialTheme.colorScheme.error) })
+            auto -> ({ Text("✨ " + S.autoFilledCheck.s(), color = AutoFillColor, fontWeight = FontWeight.SemiBold) })
+            supporting != null -> ({ Text(supporting) })
+            else -> null
+        },
+        isError = error != null,
+        trailingIcon = trailingIcon,
+        shape = MaterialTheme.shapes.medium,
+        colors = if (auto) androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            unfocusedBorderColor = AutoFillColor, focusedBorderColor = AutoFillColor,
+            unfocusedContainerColor = AutoFillColor.copy(alpha = 0.06f), focusedContainerColor = AutoFillColor.copy(alpha = 0.06f),
+        ) else androidx.compose.material3.OutlinedTextFieldDefaults.colors(),
     )
 }
 
@@ -325,11 +349,16 @@ fun EmptyState(icon: ImageVector, title: String, body: String, action: (@Composa
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(56.dp))
+        Box(
+            Modifier.size(96.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+        }
         Spacer(Modifier.height(12.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         if (action != null) {
             Spacer(Modifier.height(16.dp))
             action()
@@ -352,3 +381,49 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
 fun ClickableRow(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(Modifier.fillMaxWidth().clickable(onClick = onClick)) { content() }
 }
+
+/** Standard confirmation dialog. */
+@Composable
+fun ConfirmDialog(
+    title: String,
+    body: String?,
+    confirm: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    destructive: Boolean = false,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = if (body != null) ({ Text(body) }) else null,
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirm, color = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(S.cancel.s()) } },
+    )
+}
+
+/** Big number + label tile used on the dashboard. */
+@Composable
+fun StatTile(value: String, label: String, color: Color, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    Card(
+        modifier = modifier,
+        onClick = onClick ?: {},
+        enabled = onClick != null,
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = color.copy(alpha = 0.10f),
+            disabledContainerColor = color.copy(alpha = 0.10f),
+        ),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = color)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+        }
+    }
+}
+
+/** Highlight colour for values filled in automatically from a shared post / poster. */
+val AutoFillColor = Color(0xFFE08A00)

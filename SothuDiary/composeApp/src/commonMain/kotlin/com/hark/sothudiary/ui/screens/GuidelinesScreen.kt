@@ -103,7 +103,6 @@ fun GuidelinesScreen(ctx: AppContext) {
                     Column(Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(g.location, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                            if (g.sample) Pill(S.sample.s(), Color(0xFF8D6E63))
                         }
                         Row(Modifier.padding(top = 6.dp)) {
                             Column(Modifier.weight(1f)) {

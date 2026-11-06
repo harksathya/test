@@ -26,12 +26,43 @@ val Property.sqft: Double get() = toSqft(size, unit)
 
 fun Property.pricePerCent(): Double? = if (askingPrice > 0 && cents > 0) askingPrice / cents else null
 fun Property.pricePerSqft(): Double? = if (askingPrice > 0 && sqft > 0) askingPrice / sqft else null
+fun Property.pricePerAcre(): Double? = pricePerCent()?.let { it * CENTS_PER_ACRE }
 
-/** Houses and apartments are compared per sq ft (built-up); land is compared per cent. */
-enum class PriceBasis { PER_CENT, PER_SQFT }
+/** Houses and apartments are compared per sq ft (built-up); plots / land per cent; farmland per acre. */
+enum class PriceBasis { PER_CENT, PER_SQFT, PER_ACRE }
 
 fun PropertyType.basis(): PriceBasis = when (this) {
     PropertyType.HOUSE, PropertyType.APARTMENT -> PriceBasis.PER_SQFT
+    PropertyType.FARMLAND, PropertyType.AGRI_LAND -> PriceBasis.PER_ACRE
+    else -> PriceBasis.PER_CENT
+}
+
+fun PriceBasis.rateUnit(): com.hark.sothudiary.data.market.RateUnit = when (this) {
+    PriceBasis.PER_CENT -> com.hark.sothudiary.data.market.RateUnit.PER_CENT
+    PriceBasis.PER_SQFT -> com.hark.sothudiary.data.market.RateUnit.PER_SQFT
+    PriceBasis.PER_ACRE -> com.hark.sothudiary.data.market.RateUnit.PER_ACRE
+}
+
+/** Converts a rate from one basis to another (area based: 1 acre = 100 cents = 43,560 sq ft). */
+fun convertRate(v: Double, from: PriceBasis, to: PriceBasis): Double {
+    val perSqft = when (from) {
+        PriceBasis.PER_SQFT -> v
+        PriceBasis.PER_CENT -> v / SQFT_PER_CENT
+        PriceBasis.PER_ACRE -> v / (SQFT_PER_CENT * CENTS_PER_ACRE)
+    }
+    return when (to) {
+        PriceBasis.PER_SQFT -> perSqft
+        PriceBasis.PER_CENT -> perSqft * SQFT_PER_CENT
+        PriceBasis.PER_ACRE -> perSqft * SQFT_PER_CENT * CENTS_PER_ACRE
+    }
+}
+
+/** Type groups used for comparison: 0 plot / land, 1 farmland, 2 house, 3 apartment. */
+val TYPE_GROUPS = listOf(0, 1, 2, 3)
+
+fun groupBasis(group: Int): PriceBasis = when (group) {
+    1 -> PriceBasis.PER_ACRE
+    2, 3 -> PriceBasis.PER_SQFT
     else -> PriceBasis.PER_CENT
 }
 
@@ -46,6 +77,7 @@ fun PropertyType.group(): Int = when (this) {
 fun Property.unitPrice(): Double? = when (type.basis()) {
     PriceBasis.PER_CENT -> pricePerCent()
     PriceBasis.PER_SQFT -> pricePerSqft()
+    PriceBasis.PER_ACRE -> pricePerAcre()
 }
 
 fun normalizeLocation(s: String): String =

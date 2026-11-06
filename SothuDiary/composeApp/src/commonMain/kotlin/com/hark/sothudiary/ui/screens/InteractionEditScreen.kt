@@ -16,6 +16,26 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import com.hark.sothudiary.PlatformBackHandler
+import com.hark.sothudiary.SPEECH_BUSY
+import com.hark.sothudiary.SPEECH_LANGUAGE
+import com.hark.sothudiary.SPEECH_NETWORK
+import com.hark.sothudiary.SPEECH_NO_MATCH
+import com.hark.sothudiary.SPEECH_PERMISSION
+import com.hark.sothudiary.SPEECH_UNAVAILABLE
+import com.hark.sothudiary.data.Lang
+import com.hark.sothudiary.ui.components.ConfirmDialog
+import com.hark.sothudiary.ui.components.VoiceNotesSection
+import com.hark.sothudiary.ui.theme.LocalBrand
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
@@ -78,12 +98,80 @@ fun InteractionEditScreen(ctx: AppContext, route: Route.InteractionEdit) {
     var followUp by remember(route) { mutableStateOf(existing?.followUpAt) }
     var updateAsking by remember(route) { mutableStateOf(existing == null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDiscard by remember { mutableStateOf(false) }
+    var notes by remember(route) { mutableStateOf(existing?.voiceNotes ?: emptyList()) }
+    val added = remember(route) { mutableStateListOf<String>() }
+    val removed = remember(route) { mutableStateListOf<String>() }
+    var saved by remember(route) { mutableStateOf(false) }
+    var listening by remember { mutableStateOf(false) }
+    var partial by remember { mutableStateOf("") }
+    val speechLang = data.settings.speechLang ?: lang
+    val audio = ctx.platform.audio
+
+    // Clips recorded in this screen but never saved are removed when it closes.
+    DisposableEffect(route) {
+        onDispose {
+            audio.stopSpeech()
+            if (!saved) added.forEach { audio.deleteAudio(it) }
+        }
+    }
 
     val property = propertyId?.let { pid -> data.properties.firstOrNull { it.id == pid } }
     val quotedVal = parsePrice(quoted)
 
+    val quotedError = if (quoted.isNotBlank() && (quotedVal == null || quotedVal <= 0)) S.errPrice.s() else null
+    val dirty = existing?.let {
+        it.summary != summary || it.promises != promises || it.followUpAt != followUp || it.type != type || it.at != at ||
+            (it.quotedPrice?.toString() ?: "") != quoted || it.voiceNotes != notes || it.propertyId != propertyId || it.brokerId != brokerId
+    } ?: (summary.isNotBlank() || promises.isNotBlank() || quoted.isNotBlank() || notes.isNotEmpty() || followUp != null)
+
+    fun leave() { if (dirty) confirmDiscard = true else ctx.nav.pop() }
+    PlatformBackHandler(enabled = true) { leave() }
+
+    fun speechError(code: String): String = when (code) {
+        SPEECH_PERMISSION -> S.micDenied.of(lang)
+        SPEECH_NO_MATCH -> S.speechNoMatch.of(lang)
+        SPEECH_NETWORK -> S.speechNetwork.of(lang)
+        SPEECH_LANGUAGE -> S.speechLanguage.of(lang)
+        SPEECH_BUSY -> S.speechBusy.of(lang)
+        SPEECH_UNAVAILABLE -> S.speechUnavailable.of(lang)
+        else -> S.speechOther.of(lang)
+    }
+
+    fun toggleSpeech() {
+        if (listening) {
+            audio.stopSpeech(); listening = false; partial = ""
+            return
+        }
+        if (!audio.speechSupported) {
+            ctx.platform.toast(S.speechUnavailable.of(lang))
+            return
+        }
+        listening = true
+        partial = ""
+        audio.startSpeech(
+            if (speechLang == Lang.TA) "ta-IN" else "en-IN",
+            onPartial = { partial = it },
+            onFinal = { text ->
+                summary = (summary.trimEnd() + (if (summary.isBlank()) "" else " ") + text.trim()).trim()
+                partial = ""
+                listening = false
+            },
+            onError = { code -> listening = false; partial = ""; ctx.platform.toast(speechError(code)) },
+        )
+    }
+
     fun save() {
+        if (quotedError != null) {
+            ctx.platform.toast(S.fixErrors.of(lang))
+            return
+        }
+        audio.stopSpeech()
+        removed.forEach { audio.deleteAudio(it) }
+        saved = true
+        if (followUp != null && data.settings.reminders) ctx.platform.setReminders(true)
         val i = (existing ?: Interaction(id = newId())).copy(
+            voiceNotes = notes,
             propertyId = propertyId,
             brokerId = brokerId,
             at = at,
@@ -101,10 +189,10 @@ fun InteractionEditScreen(ctx: AppContext, route: Route.InteractionEdit) {
     Scaffold(
         topBar = {
             AppTopBar(
-                if (existing == null) S.logInteraction.s() else S.editInteraction.s(), ctx.toggleLang, onBack = { ctx.nav.pop() },
+                if (existing == null) S.logInteraction.s() else S.editInteraction.s(), ctx.toggleLang, onBack = { leave() },
                 actions = {
                     if (existing != null) IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, contentDescription = S.delete.s()) }
-                    TextButton(onClick = { save() }) { Text(S.save.s(), color = MaterialTheme.colorScheme.onPrimary) }
+                    TextButton(onClick = { save() }) { Text(S.save.s(), color = LocalBrand.current.onBar, fontWeight = FontWeight.Bold) }
                 },
             )
         },
@@ -145,6 +233,7 @@ fun InteractionEditScreen(ctx: AppContext, route: Route.InteractionEdit) {
                     Field(
                         quoted, { quoted = it }, S.quotedPrice.s(), keyboard = KeyboardType.Text,
                         supporting = property?.takeIf { it.askingPrice > 0 }?.let { S.currentAsking.f(priceShort(it.askingPrice, lang)) } ?: S.priceInputHint.s(),
+                        error = quotedError,
                     )
                     if (quotedVal != null && quotedVal > 0) {
                         Text("= " + priceShort(quotedVal, lang), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
@@ -155,9 +244,48 @@ fun InteractionEditScreen(ctx: AppContext, route: Route.InteractionEdit) {
                             Text(S.updateAsking.s(), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    Field(summary, { summary = it }, S.summary.s(), singleLine = false, minLines = 3)
+                    Field(
+                        summary, { summary = it }, S.summary.s(), singleLine = false, minLines = 3,
+                        trailingIcon = {
+                            IconButton(onClick = { toggleSpeech() }) {
+                                Icon(
+                                    if (listening) Icons.Filled.Stop else Icons.Filled.Mic,
+                                    contentDescription = S.speakToType.s(),
+                                    tint = if (listening) Color(0xFFD32F2F) else MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        },
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (listening) S.listening.s() else S.speakToTypeHint.s(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (listening) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        FilterChip(
+                            selected = speechLang == Lang.TA,
+                            onClick = { ctx.repo.setSpeechLang(if (speechLang == Lang.TA) Lang.EN else Lang.TA) },
+                            label = { Text(if (speechLang == Lang.TA) "தமிழ்" else "English") },
+                            leadingIcon = { Icon(Icons.Filled.Translate, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        )
+                    }
+                    if (partial.isNotBlank()) {
+                        Text("“$partial”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
                     Field(promises, { promises = it }, S.promises.s(), singleLine = false, minLines = 2, supporting = S.promisesHint.s())
                 }
+            }
+            SectionCard(title = S.voiceNotes.s(), icon = Icons.Filled.Mic) {
+                VoiceNotesSection(
+                    ctx, notes,
+                    onAdd = { vn -> notes = notes + vn; added += vn.fileName },
+                    onRemove = { vn ->
+                        notes = notes.filterNot { it.id == vn.id }
+                        if (vn.fileName in added) { audio.deleteAudio(vn.fileName); added -= vn.fileName } else removed += vn.fileName
+                    },
+                )
+                Text(S.voiceNotExported.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             }
             SectionCard(title = S.nextFollowUp.s()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -175,12 +303,25 @@ fun InteractionEditScreen(ctx: AppContext, route: Route.InteractionEdit) {
         }
     }
 
+    if (confirmDiscard) {
+        ConfirmDialog(
+            title = S.discardQ.s(), body = S.discardBody.s(), confirm = S.discard.s(), destructive = true,
+            onConfirm = { confirmDiscard = false; ctx.nav.pop() }, onDismiss = { confirmDiscard = false },
+        )
+    }
+
     if (confirmDelete && existing != null) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text(S.deleteInteractionQ.s()) },
             confirmButton = {
-                TextButton(onClick = { confirmDelete = false; ctx.repo.deleteInteraction(existing.id); ctx.nav.pop() }) {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    (existing.voiceNotes.map { it.fileName } + added).forEach { audio.deleteAudio(it) }
+                    saved = true
+                    ctx.repo.deleteInteraction(existing.id)
+                    ctx.nav.pop()
+                }) {
                     Text(S.delete.s(), color = MaterialTheme.colorScheme.error)
                 }
             },

@@ -25,6 +25,24 @@ fun nowMillis(): Long = Clock.System.now().toEpochMilliseconds()
 fun newId(): String =
     nowMillis().toString(36) + "-" + Random.nextLong(0, Long.MAX_VALUE).toString(36).take(6)
 
+/**
+ * Upgrades data written by older versions.
+ * v1 -> v2: the clearly labelled SAMPLE records that v1 seeded are removed (the app now starts empty).
+ */
+fun migrate(d: AppData): AppData {
+    val sampleProps = d.properties.filter { it.sample }.map { it.id }.toSet()
+    val sampleBrokers = d.brokers.filter { it.sample }.map { it.id }.toSet()
+    return d.copy(
+        version = CURRENT_DATA_VERSION,
+        properties = d.properties.filterNot { it.sample }
+            .map { if (it.brokerId != null && it.brokerId in sampleBrokers) it.copy(brokerId = null) else it },
+        brokers = d.brokers.filterNot { it.sample },
+        interactions = d.interactions.filterNot { it.sample || (it.propertyId != null && it.propertyId in sampleProps) }
+            .map { if (it.brokerId != null && it.brokerId in sampleBrokers) it.copy(brokerId = null) else it },
+        guidelines = d.guidelines.filterNot { it.sample },
+    )
+}
+
 interface PropertyRepository {
     val data: AppData
     fun update(transform: (AppData) -> AppData)
@@ -49,8 +67,8 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
     init {
         val text = runCatching { store.read() }.getOrNull()
         val parsed = text?.let { runCatching { json.decodeFromString(AppData.serializer(), it) }.getOrNull() }
-        data = parsed ?: SampleData.build(nowMillis()).copy(settings = AppSettings(seeded = true))
-        if (parsed == null) persist(data)
+        data = migrate(parsed ?: AppData())
+        if (parsed == null || parsed != data) persist(data)
     }
 
     override fun update(transform: (AppData) -> AppData) {
@@ -133,46 +151,55 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
 
     fun deleteGuideline(id: String) = update { d -> d.copy(guidelines = d.guidelines.filterNot { it.id == id }) }
 
+    // ---- Folders ----
+    fun upsertFolder(f: Folder) = update { d ->
+        val exists = d.folders.any { it.id == f.id }
+        d.copy(folders = if (exists) d.folders.map { if (it.id == f.id) f else it } else d.folders + f.copy(createdAt = nowMillis()))
+    }
+
+    fun deleteFolder(id: String) = update { d ->
+        d.copy(
+            folders = d.folders.filterNot { it.id == id },
+            properties = d.properties.map { if (id in it.folderIds) it.copy(folderIds = it.folderIds - id) else it },
+        )
+    }
+
+    fun setInFolder(propertyId: String, folderId: String, inFolder: Boolean) = update { d ->
+        d.copy(properties = d.properties.map {
+            if (it.id == propertyId) it.copy(folderIds = if (inFolder) it.folderIds + folderId else it.folderIds - folderId) else it
+        })
+    }
+
+    /** Moves a property out of all folders into [folderId] (null = no folder). */
+    fun moveToFolder(propertyId: String, folderId: String?) = update { d ->
+        d.copy(properties = d.properties.map {
+            if (it.id == propertyId) it.copy(folderIds = if (folderId == null) emptySet() else setOf(folderId)) else it
+        })
+    }
+
+    fun setPropertyImage(propertyId: String, imageFile: String?, imageUrl: String?) = update { d ->
+        d.copy(properties = d.properties.map {
+            if (it.id == propertyId) it.copy(imageFile = imageFile ?: it.imageFile, imageUrl = imageUrl ?: it.imageUrl) else it
+        })
+    }
+
     // ---- Settings / data management ----
     fun setLang(lang: Lang) = update { d -> d.copy(settings = d.settings.copy(lang = lang)) }
 
-    fun hasSamples(): Boolean = data.properties.any { it.sample } || data.brokers.any { it.sample } ||
-        data.guidelines.any { it.sample } || data.interactions.any { it.sample }
+    fun setTheme(mode: ThemeMode) = update { d -> d.copy(settings = d.settings.copy(theme = mode)) }
 
-    fun clearSamples() = update { d ->
-        val sampleProps = d.properties.filter { it.sample }.map { it.id }.toSet()
-        val sampleBrokers = d.brokers.filter { it.sample }.map { it.id }.toSet()
-        d.copy(
-            properties = d.properties.filterNot { it.sample }
-                .map { if (it.brokerId in sampleBrokers) it.copy(brokerId = null) else it },
-            brokers = d.brokers.filterNot { it.sample },
-            interactions = d.interactions.filterNot { it.sample || it.propertyId in sampleProps },
-            guidelines = d.guidelines.filterNot { it.sample },
-        )
-    }
+    fun setReminders(on: Boolean) = update { d -> d.copy(settings = d.settings.copy(reminders = on)) }
 
-    fun loadSamples() = update { d ->
-        val s = SampleData.build(nowMillis())
-        val withoutOld = d.copy(
-            properties = d.properties.filterNot { it.sample },
-            brokers = d.brokers.filterNot { it.sample },
-            interactions = d.interactions.filterNot { it.sample },
-            guidelines = d.guidelines.filterNot { it.sample },
-        )
-        withoutOld.copy(
-            properties = withoutOld.properties + s.properties,
-            brokers = withoutOld.brokers + s.brokers,
-            interactions = withoutOld.interactions + s.interactions,
-            guidelines = withoutOld.guidelines + s.guidelines,
-        )
-    }
+    fun setSpeechLang(lang: Lang?) = update { d -> d.copy(settings = d.settings.copy(speechLang = lang)) }
+
+    fun setOnboarded() = update { d -> d.copy(settings = d.settings.copy(onboarded = true)) }
 
     fun exportJson(): String = json.encodeToString(AppData.serializer(), data)
 
     /** Replaces all data with the imported file. Returns false if the text is not a valid backup. */
     fun importJson(text: String): Boolean {
         val parsed = runCatching { json.decodeFromString(AppData.serializer(), text) }.getOrNull() ?: return false
-        update { parsed.copy(settings = parsed.settings.copy(lang = data.settings.lang, seeded = true)) }
+        update { migrate(parsed).copy(settings = parsed.settings.copy(lang = data.settings.lang)) }
         return true
     }
 }

@@ -1,3 +1,7 @@
 <resources>
     <color name="ic_bg">#FF0B5CAD</color>
+    <color name="brand_blue">#FF0B5CAD</color>
+    <color name="brand_dark">#FF13304D</color>
+    <color name="canvas">#FFF3F6FA</color>
+    <color name="canvas_dark">#FF0E141B</color>
 </resources>

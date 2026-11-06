@@ -23,9 +23,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build debug APK
         run: chmod +x gradlew && ./gradlew :composeApp:assembleDebug --stacktrace
-      - name: Compile desktop target (informational)
+      - name: Compile desktop target + run shared unit tests (informational)
         continue-on-error: true
-        run: ./gradlew :composeApp:compileKotlinDesktop
+        run: ./gradlew :composeApp:compileKotlinDesktop :composeApp:desktopTest
       - run: cp composeApp/build/outputs/apk/debug/composeApp-debug.apk SothuDiary.apk
       - uses: actions/upload-artifact@v4
         with:
@@ -36,7 +36,7 @@ jobs:
         with:
           tag_name: sothu-diary-latest
           name: Sothu Diary (latest build)
-          body: Debug APK of Sothu Diary (சொத்து டைரி) built from ${{ github.sha }}. Install on Android (allow installs from unknown sources).
+          body: Debug APK of Sothu Diary (சொத்து டைரி) v2.0 built from ${{ github.sha }}. Install on Android (allow installs from unknown sources).
           prerelease: false
           make_latest: false
           files: SothuDiary/SothuDiary.apk

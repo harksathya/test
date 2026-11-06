@@ -30,14 +30,27 @@ kotlin {
             implementation(compose.ui)
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
             implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+            // Thumbnails / photos (Compose Multiplatform image loading)
+            implementation("io.coil-kt.coil3:coil-compose:3.0.4")
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
         }
         androidMain.dependencies {
             implementation("androidx.activity:activity-compose:1.9.2")
             implementation("androidx.core:core-ktx:1.13.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+            // OpenStreetMap map view (no API key needed)
+            implementation("org.osmdroid:osmdroid-android:6.1.18")
+            implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
+            // On-device OCR for shared posters / screenshots (Latin script)
+            implementation("com.google.mlkit:text-recognition:16.0.1")
         }
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.8.1")
+            implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
         }
     }
 }
@@ -53,8 +66,10 @@ android {
         applicationId = "com.hark.sothudiary"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "2.0"
+        // Phones are ARM; dropping x86 keeps ML Kit's native OCR libraries out of the APK for emulators only.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
     packaging {
         resources {
@@ -87,7 +102,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "SothuDiary"
-            packageVersion = "1.0.0"
+            packageVersion = "2.0.0"
         }
     }
 }

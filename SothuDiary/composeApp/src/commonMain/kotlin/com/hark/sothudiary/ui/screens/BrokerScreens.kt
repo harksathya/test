@@ -200,7 +200,6 @@ fun BrokerDetailScreen(ctx: AppContext, id: String) {
                         if (b.area.isNotBlank()) Text(b.area, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.padding(top = 4.dp)) {
                             if (b.platform != SourcePlatform.NONE) Pill(b.platform.tr().s(), platformColor(b.platform), filled = true)
-                            if (b.sample) { Spacer(Modifier.width(6.dp)); Pill(S.sample.s(), Color(0xFF8D6E63)) }
                         }
                     }
                 }
@@ -227,7 +226,7 @@ fun BrokerDetailScreen(ctx: AppContext, id: String) {
                 Text(S.noPropertiesForBroker.s(), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             props.forEach { p ->
-                PropertyCard(p, b, checks[p.id], nextFollowUp(p.id, data), selected = false) { ctx.nav.push(Route.PropertyDetail(p.id)) }
+                PropertyCard(p, b, checks[p.id], nextFollowUp(p.id, data), selected = false, image = com.hark.sothudiary.ui.components.propertyImageModel(ctx.platform, p)) { ctx.nav.push(Route.PropertyDetail(p.id)) }
             }
 
             SectionCard(title = S.callHistory.s() + " (" + history.size + ")") {
@@ -277,7 +276,7 @@ fun BrokerEditScreen(ctx: AppContext, route: Route.BrokerEdit) {
         topBar = {
             AppTopBar(
                 if (existing == null) S.addBroker.s() else S.editBroker.s(), ctx.toggleLang, onBack = { ctx.nav.pop() },
-                actions = { TextButton(onClick = { save() }, enabled = name.isNotBlank()) { Text(S.save.s(), color = MaterialTheme.colorScheme.onPrimary) } },
+                actions = { TextButton(onClick = { save() }, enabled = name.isNotBlank()) { Text(S.save.s(), color = com.hark.sothudiary.ui.theme.LocalBrand.current.onBar) } },
             )
         },
         containerColor = MaterialTheme.colorScheme.background,

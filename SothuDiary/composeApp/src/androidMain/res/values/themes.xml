@@ -1,6 +1,15 @@
 <resources>
     <style name="Theme.SothuDiary" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">#FF0B5CAD</item>
-        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@color/brand_blue</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:windowBackground">@color/canvas</item>
+        <item name="android:colorPrimary">@color/brand_blue</item>
+        <item name="android:colorAccent">@color/brand_blue</item>
+    </style>
+
+    <!-- Shown while the app starts (API < 31 uses the window background) -->
+    <style name="Theme.SothuDiary.Starting">
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/brand_blue</item>
     </style>
 </resources>

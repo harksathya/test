@@ -9,6 +9,9 @@ import com.hark.sothudiary.data.SourcePlatform
 import com.hark.sothudiary.domain.PriceBasis
 import com.hark.sothudiary.domain.pricing.Advice
 import com.hark.sothudiary.domain.pricing.Verdict
+import com.hark.sothudiary.domain.pricing.Confidence
+import com.hark.sothudiary.domain.pricing.CompSource
+import com.hark.sothudiary.data.ThemeMode
 
 fun PropertyType.tr(): Tr = when (this) {
     PropertyType.LAND -> Tr("Land", "நிலம்")
@@ -89,9 +92,38 @@ fun Advice.tr(): Tr = when (this) {
 fun PriceBasis.perTr(): Tr = when (this) {
     PriceBasis.PER_CENT -> Tr("per cent", "ஒரு சென்ட்")
     PriceBasis.PER_SQFT -> Tr("per sq ft", "ஒரு சதுர அடி")
+    PriceBasis.PER_ACRE -> Tr("per acre", "ஒரு ஏக்கர்")
 }
 
 fun PriceBasis.slashTr(): Tr = when (this) {
     PriceBasis.PER_CENT -> Tr("/cent", "/சென்ட்")
     PriceBasis.PER_SQFT -> Tr("/sq ft", "/ச.அடி")
+    PriceBasis.PER_ACRE -> Tr("/acre", "/ஏக்கர்")
+}
+
+fun Confidence.tr(): Tr = when (this) {
+    Confidence.HIGH -> Tr("High confidence", "அதிக நம்பகத்தன்மை")
+    Confidence.MEDIUM -> Tr("Medium confidence", "நடுத்தர நம்பகத்தன்மை")
+    Confidence.LOW -> Tr("Low confidence", "குறைந்த நம்பகத்தன்மை")
+}
+
+fun CompSource.tr(): Tr = when (this) {
+    CompSource.YOUR_LISTING -> Tr("Your listing", "உங்கள் பதிவு")
+    CompSource.MARKET -> Tr("Market data", "சந்தை தகவல்")
+    CompSource.MARKET_FALLBACK -> Tr("Area average (mixed types)", "பகுதி சராசரி (கலப்பு வகை)")
+    CompSource.CITY_AVERAGE -> Tr("City-wide average", "நகர சராசரி")
+}
+
+fun ThemeMode.tr(): Tr = when (this) {
+    ThemeMode.SYSTEM -> Tr("System", "சாதன அமைப்பு")
+    ThemeMode.LIGHT -> Tr("Light", "வெளிர்")
+    ThemeMode.DARK -> Tr("Dark", "இருள்")
+}
+
+/** Names of the comparison groups (0 plot / land, 1 farmland, 2 house, 3 apartment). */
+fun groupTr(group: Int): Tr = when (group) {
+    1 -> Tr("Farmland / agri land", "விவசாய / பண்ணை நிலம்")
+    2 -> Tr("House / villa", "வீடு / வில்லா")
+    3 -> Tr("Apartment / flat", "அடுக்குமாடி / பிளாட்")
+    else -> Tr("Plot / land", "மனை / நிலம்")
 }

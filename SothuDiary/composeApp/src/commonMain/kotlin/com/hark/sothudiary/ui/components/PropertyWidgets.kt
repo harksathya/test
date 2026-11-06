@@ -44,6 +44,8 @@ import com.hark.sothudiary.domain.formatDateShort
 import com.hark.sothudiary.domain.indianGroup
 import com.hark.sothudiary.domain.pricePerCent
 import com.hark.sothudiary.domain.pricePerSqft
+import com.hark.sothudiary.domain.pricePerAcre
+import com.hark.sothudiary.domain.basis
 import com.hark.sothudiary.domain.priceShort
 import com.hark.sothudiary.domain.pricing.Advice
 import com.hark.sothudiary.domain.pricing.PriceCheck
@@ -98,149 +100,8 @@ fun unitPriceLine(p: Property): String {
     val parts = mutableListOf<String>()
     if (perCent != null) parts += unitPriceShort(perCent, lang) + PriceBasis.PER_CENT.slashTr().of(lang)
     if (perSqft != null) parts += unitPriceShort(perSqft, lang) + PriceBasis.PER_SQFT.slashTr().of(lang)
+    if (p.type.basis() == PriceBasis.PER_ACRE) p.pricePerAcre()?.let { parts.add(0, unitPriceShort(it, lang) + PriceBasis.PER_ACRE.slashTr().of(lang)) }
     return parts.joinToString("  •  ")
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun PropertyCard(
-    p: Property,
-    broker: Broker?,
-    check: PriceCheck?,
-    nextFollowUp: Long?,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val lang = LocalLang.current
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface),
-        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Pill(p.type.tr().s(), MaterialTheme.colorScheme.primary)
-                if (p.sample) {
-                    Spacer(Modifier.width(6.dp))
-                    Pill(S.sample.s(), Color(0xFF8D6E63))
-                }
-                Spacer(Modifier.weight(1f))
-                if (p.sourcePlatform != SourcePlatform.NONE) {
-                    Pill(p.sourcePlatform.tr().s(), platformColor(p.sourcePlatform), filled = true)
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(p.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(3.dp))
-                Text(p.locationLine().ifBlank { "-" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    if (p.askingPrice > 0) priceShort(p.askingPrice, lang) else S.priceOnRequest.s(),
-                    style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(unitPriceLine(p), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.SquareFoot, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(3.dp))
-                Text(sizeLine(p), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(Modifier.height(10.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Pill(p.status.tr().s(), statusColor(p.status))
-                if (check != null) Pill(check.verdict.shortTr().s(), verdictColor(check.verdict), filled = check.verdict != Verdict.UNKNOWN)
-                if (nextFollowUp != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Event, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
-                        Text(" " + formatDateShort(nextFollowUp, lang), fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
-                    }
-                }
-                if (broker != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(" " + broker.name, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun pctText(p: Double): String = (if (p >= 0) "+" else "−") + dec(abs(p), 0) + "%"
-
-/** Price check card with verdict and the reasoning behind it. */
-@Composable
-fun PriceCheckCard(p: Property, check: PriceCheck, guidelineLink: () -> Unit) {
-    val lang = LocalLang.current
-    val color = verdictColor(check.verdict)
-    val per = check.basis.perTr().s()
-    SectionCard(title = S.priceCheck.s(), accent = color) {
-        Box(Modifier.fillMaxWidth().background(color.copy(alpha = 0.1f), RoundedCornerShape(10.dp)).padding(12.dp)) {
-            Text(check.verdict.tr().s(), color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-        }
-        Spacer(Modifier.height(10.dp))
-        KeyValueRow(S.thisProperty.f(per), check.unitPrice?.let { unitPriceShort(it, lang) } ?: "-")
-        KeyValueRow(
-            S.guidelineValue.f(per),
-            check.guideline?.let { unitPriceShort(it, lang) + (check.guidelineLocation?.let { l -> " ($l)" } ?: "") } ?: S.notSet.s(),
-        )
-        check.diffVsGuidelinePct?.let { KeyValueRow(S.vsGuideline.s(), pctText(it), if (it < 0) verdictColor(Verdict.SUSPICIOUS_LOW) else Color.Unspecified) }
-        KeyValueRow(
-            S.marketMedian.f(per),
-            check.marketMedian?.let { unitPriceShort(it, lang) } ?: S.notEnough.s(),
-        )
-        KeyValueRow(S.comparables.s(), S.nListings.f(check.comparableCount))
-        check.diffVsMarketPct?.let { KeyValueRow(S.vsMarket.s(), pctText(it), color) }
-        Spacer(Modifier.height(8.dp))
-        val explain = when {
-            check.unitPrice == null -> S.explainNoPrice.s()
-            check.belowGuideline -> S.explainBelowGuideline.s()
-            check.marketMedian == null -> S.explainNoMarket.f(check.comparableCount)
-            else -> when (check.verdict) {
-                Verdict.SUSPICIOUS_LOW -> S.explainSuspicious.s()
-                Verdict.GOOD -> S.explainGood.s()
-                Verdict.FAIR -> S.explainFair.s()
-                Verdict.HIGH -> S.explainHigh.s()
-                Verdict.TOO_HIGH -> S.explainTooHigh.s()
-                Verdict.UNKNOWN -> S.explainNoMarket.f(check.comparableCount)
-            }
-        }
-        Text(explain, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (check.quotes.isNotEmpty()) {
-            Spacer(Modifier.height(10.dp))
-            Text(S.quotedHistory.s(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
-            val first = check.quotes.first()
-            if (p.askingPrice > 0 && first.price != p.askingPrice) {
-                val up = p.askingPrice > first.price
-                Text(
-                    S.quotedThenNow.f(priceShort(first.price, lang), formatDateShort(first.at, lang), priceShort(p.askingPrice, lang),
-                        pctText((p.askingPrice.toDouble() / first.price - 1) * 100)),
-                    color = if (up) verdictColor(Verdict.TOO_HIGH) else verdictColor(Verdict.FAIR),
-                    fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            check.quotes.forEach { q ->
-                Text("• " + formatDateShort(q.at, lang) + ": " + priceShort(q.price, lang), style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            S.guidelineHint.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(top = 2.dp).let { m -> m },
-        )
-        androidx.compose.material3.TextButton(onClick = guidelineLink) { Text(S.openTnReginet.s()) }
-    }
 }
 
 @Composable

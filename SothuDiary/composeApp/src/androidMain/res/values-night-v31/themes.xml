@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.SothuDiary.Starting" parent="Theme.SothuDiary">
+        <item name="android:windowSplashScreenBackground">@color/brand_dark</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowBackground">@drawable/splash</item>
+    </style>
+</resources>

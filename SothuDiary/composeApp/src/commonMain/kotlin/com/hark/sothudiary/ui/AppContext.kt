@@ -21,6 +21,10 @@ class AppContext(
 
 enum class SortBy { NEWEST, PRICE_LOW, PRICE_HIGH, PER_CENT, FOLLOW_UP }
 
+enum class GroupBy { NONE, SOURCE, LOCATION, TYPE, STATUS }
+
+enum class ListMode { LIST, FOLDERS }
+
 /** Search / filter / sort state for the property list, kept while navigating. */
 class FilterState {
     var query by mutableStateOf("")
@@ -31,6 +35,9 @@ class FilterState {
     var maxPrice by mutableStateOf("")
     var sort by mutableStateOf(SortBy.NEWEST)
     var showFilters by mutableStateOf(false)
+    var group by mutableStateOf(GroupBy.NONE)
+    var mode by mutableStateOf(ListMode.LIST)
+    var collapsed by mutableStateOf(setOf<String>())
 
     fun activeCount(): Int = types.size + statuses.size + verdicts.size +
         (if (minPrice.isNotBlank()) 1 else 0) + (if (maxPrice.isNotBlank()) 1 else 0)
