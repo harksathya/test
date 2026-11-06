@@ -37,7 +37,14 @@ class FilterState {
     var showFilters by mutableStateOf(false)
     var group by mutableStateOf(GroupBy.NONE)
     var mode by mutableStateOf(ListMode.LIST)
-    var collapsed by mutableStateOf(setOf<String>())
+    /** Groups the user opened in the grouped list. Groups start collapsed; kept for the session (per grouping). */
+    var expanded by mutableStateOf(setOf<String>())
+
+    fun isExpanded(key: String): Boolean = "${group.name}:$key" in expanded
+    fun toggleGroup(key: String) {
+        val k = "${group.name}:$key"
+        expanded = if (k in expanded) expanded - k else expanded + k
+    }
 
     fun activeCount(): Int = types.size + statuses.size + verdicts.size +
         (if (minPrice.isNotBlank()) 1 else 0) + (if (maxPrice.isNotBlank()) 1 else 0)

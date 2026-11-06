@@ -3,6 +3,7 @@ package com.hark.sothudiary.ui.screens
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import com.hark.sothudiary.ui.components.GeminiSetupCard
+import com.hark.sothudiary.data.normalizeGeminiModel
 import com.hark.sothudiary.ui.components.GeminiKeySteps
 import com.hark.sothudiary.i18n.groupTr
 import com.hark.sothudiary.ui.components.AI_STUDIO_URL
@@ -50,7 +51,7 @@ import com.hark.sothudiary.ui.components.AppTopBar
 import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 
-const val APP_VERSION = "2.1"
+const val APP_VERSION = "2.1.1"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -109,15 +110,17 @@ fun SettingsScreen(ctx: AppContext) {
             SectionCard(title = S.onlineServices.s()) {
                 var yt by remember(data.settings.youtubeApiKey) { mutableStateOf(data.settings.youtubeApiKey) }
                 var gm by remember(data.settings.geminiApiKey) { mutableStateOf(data.settings.geminiApiKey) }
-                var model by remember(data.settings.geminiModel) { mutableStateOf(data.settings.geminiModel) }
+                val autoLabel = S.geminiAuto.s()
+                val savedModel = normalizeGeminiModel(data.settings.geminiModel)
+                var model by remember(savedModel, autoLabel) { mutableStateOf(if (savedModel == "auto") autoLabel else savedModel) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(S.onlineServicesBody.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Field(gm, { gm = it }, S.geminiKey.s(), supporting = S.geminiKeyHint.s())
                     TextButton(onClick = { ctx.platform.openUrl(AI_STUDIO_URL) }) { Text(S.getFreeKey.s()) }
                     GeminiKeySteps()
-                    Field(model, { model = it }, S.geminiModel.s())
+                    Field(model, { model = it }, S.geminiModel.s(), supporting = S.geminiModelHint.s())
                     Field(yt, { yt = it }, S.youtubeKey.s(), supporting = S.youtubeKeyHint.s())
-                    val changed = yt != data.settings.youtubeApiKey || gm != data.settings.geminiApiKey || model != data.settings.geminiModel
+                    val changed = yt != data.settings.youtubeApiKey || gm != data.settings.geminiApiKey || normalizeGeminiModel(model) != savedModel
                     Button(onClick = { ctx.repo.setApiKeys(yt, gm, model); ctx.platform.toast(S.saved.of(lang)) }, enabled = changed) { Text(S.save.s()) }
                     HorizontalDivider()
                     Text(S.onlineRatesSaved.f(data.rateLookups.size, data.onlineRates.size), style = MaterialTheme.typography.bodyMedium)

@@ -3,6 +3,8 @@ package com.hark.sothudiary.ui.screens
 import com.hark.sothudiary.ui.components.GeminiSetupCard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +66,6 @@ import com.hark.sothudiary.i18n.tr
 import com.hark.sothudiary.ui.AppContext
 import com.hark.sothudiary.ui.Route
 import com.hark.sothudiary.ui.Tab
-import com.hark.sothudiary.ui.components.FolderTile
 import com.hark.sothudiary.ui.components.LangToggle
 import com.hark.sothudiary.ui.components.Pill
 import com.hark.sothudiary.ui.components.PropertyMiniCard
@@ -72,8 +73,6 @@ import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.ui.components.StatTile
 import com.hark.sothudiary.ui.components.bucket
 import com.hark.sothudiary.ui.components.propertyImageModel
-import com.hark.sothudiary.ui.components.sourceBrush
-import com.hark.sothudiary.ui.components.sourceIcon
 import com.hark.sothudiary.ui.theme.LocalBrand
 import com.hark.sothudiary.ui.theme.statusColor
 import com.hark.sothudiary.ui.theme.verdictColor
@@ -93,14 +92,15 @@ fun HomeScreen(ctx: AppContext) {
         // ---- Hero ----
         Box(
             Modifier.fillMaxWidth()
+                .shadow(if (LocalBrand.current.dark) 0.dp else 2.dp, RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                 .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-                .background(LocalBrand.current.heroGradient),
+                .background(LocalBrand.current.hero),
         ) {
             Column(Modifier.statusBarsPadding().padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(S.appName.s(), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(S.appTagline.s(), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium)
+                        Text(S.appName.s(), color = MaterialTheme.colorScheme.onSurface, fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+                        Text(S.appTagline.s(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                     }
                     LangToggle(ctx.toggleLang)
                 }
@@ -117,9 +117,9 @@ fun HomeScreen(ctx: AppContext) {
             // ---- Quick actions ----
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 QuickAction(Icons.Filled.AddHomeWork, S.addProperty.s(), MaterialTheme.colorScheme.primary) { ctx.nav.select(Route.PropertyEdit(null)) }
-                QuickAction(Icons.Filled.PhoneInTalk, S.logInteraction.s(), MaterialTheme.colorScheme.secondary) { ctx.nav.select(Route.InteractionEdit(null, null, null)) }
-                QuickAction(Icons.Filled.QueryStats, S.tabAreaRates.s(), Color(0xFF7C4DFF)) { ctx.nav.switchTab(Tab.AREA_RATES) }
-                QuickAction(Icons.Filled.Map, S.tabMap.s(), Color(0xFFEF6C00)) { ctx.nav.switchTab(Tab.MAP) }
+                QuickAction(Icons.Filled.PhoneInTalk, S.logInteraction.s(), MaterialTheme.colorScheme.primary) { ctx.nav.select(Route.InteractionEdit(null, null, null)) }
+                QuickAction(Icons.Filled.QueryStats, S.tabAreaRates.s(), MaterialTheme.colorScheme.primary) { ctx.nav.switchTab(Tab.AREA_RATES) }
+                QuickAction(Icons.Filled.Map, S.tabMap.s(), MaterialTheme.colorScheme.primary) { ctx.nav.switchTab(Tab.MAP) }
             }
 
             if (data.settings.geminiApiKey.isBlank() && !data.settings.keyCardDismissed) {
@@ -200,15 +200,7 @@ fun HomeScreen(ctx: AppContext) {
 
                 // ---- Sources ----
                 SectionTitle(S.bySource.s()) { ctx.filters.mode = com.hark.sothudiary.ui.ListMode.FOLDERS; ctx.nav.switchTab(Tab.PROPERTIES) }
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SOURCE_BUCKETS.forEach { src ->
-                        val props = data.properties.filter { it.sourcePlatform.bucket() == src }.sortedByDescending { it.createdAt }
-                        FolderTile(
-                            sourceName(src), props.size, sourceBrush(src), sourceIcon(src), props.take(3).map { propertyImageModel(ctx.platform, it) },
-                            onClick = { ctx.nav.select(Route.FolderView(source = src.name)) }, modifier = Modifier.width(140.dp),
-                        )
-                    }
-                }
+                SourceTiles(ctx)
             }
 
             // ---- Recent activity ----
@@ -244,11 +236,11 @@ fun HomeScreen(ctx: AppContext) {
 @Composable
 private fun HeroStat(value: String, label: String, modifier: Modifier, alert: Boolean = false, onClick: () -> Unit) {
     Column(
-        modifier.clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = if (alert) 0.26f else 0.16f)).clickable(onClick = onClick)
+        modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Text(value, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-        Text(label, color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(value, color = if (alert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -258,8 +250,9 @@ private fun QuickAction(icon: ImageVector, label: String, color: Color, onClick:
         Modifier.width(80.dp).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.size(54.dp).clip(RoundedCornerShape(18.dp)).background(color.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(26.dp))
+        Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.height(6.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,

@@ -84,8 +84,8 @@ fun ReviewsSection(
             shown.forEachIndexed { i, r ->
                 if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(verticalAlignment = Alignment.Top) {
-                    Box(Modifier.size(30.dp).background(platformColor(r.source).copy(alpha = 0.15f), CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(sourceIcon(r.source), contentDescription = null, tint = platformColor(r.source), modifier = Modifier.size(16.dp))
+                    Box(Modifier.size(30.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+                        SourceLogo(r.source, 16.dp)
                     }
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {

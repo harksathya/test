@@ -306,4 +306,14 @@ class ListingParserTest {
         assertTrue(parseComparablesJson("Sorry, I could not find anything.").isEmpty())
         assertTrue(parseComparablesJson("""{"comparables":[]}""").isEmpty())
     }
+
+    @Test
+    fun picksNewestStableFlashModel() {
+        val ids = listOf("gemini-2.0-flash", "gemini-2.5-pro", "gemini-3.8-flash", "gemini-3.8-flash-lite",
+            "gemini-3.8-flash-image", "gemini-3.9-flash-preview", "text-embedding-004", "gemini-2.5-flash-tts")
+        val picked = com.hark.sothudiary.domain.pricing.pickModels(ids)
+        kotlin.test.assertEquals("gemini-3.9-flash-preview", picked.first())
+        kotlin.test.assertTrue("gemini-3.8-flash" in picked)
+        kotlin.test.assertTrue(picked.none { "image" in it || "tts" in it || "embedding" in it })
+    }
 }

@@ -25,21 +25,34 @@ fun nowMillis(): Long = Clock.System.now().toEpochMilliseconds()
 fun newId(): String =
     nowMillis().toString(36) + "-" + Random.nextLong(0, Long.MAX_VALUE).toString(36).take(6)
 
+/** Models that older versions saved as the default; they retire, so they now mean "auto" (newest Flash). */
+val LEGACY_DEFAULT_MODELS = setOf("gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash")
+
+/** "auto" for blank / "Auto (latest)" / an old default; otherwise the model id without the "models/" prefix. */
+fun normalizeGeminiModel(raw: String): String {
+    val m = raw.trim().removePrefix("models/").trim()
+    if (m.isBlank() || m.lowercase() in LEGACY_DEFAULT_MODELS || m.lowercase().startsWith("auto") || m.startsWith("தானியங்கி")) return "auto"
+    return m
+}
+
 /**
  * Upgrades data written by older versions.
  * v1 -> v2: the clearly labelled SAMPLE records that v1 seeded are removed (the app now starts empty).
+ * 2.1.1: old default Gemini models become "auto"; placeholder titles ("Instagram") are rebuilt from the caption.
  */
 fun migrate(d: AppData): AppData {
     val sampleProps = d.properties.filter { it.sample }.map { it.id }.toSet()
     val sampleBrokers = d.brokers.filter { it.sample }.map { it.id }.toSet()
     return d.copy(
         version = CURRENT_DATA_VERSION,
-        properties = d.properties.filterNot { it.sample }
-            .map { if (it.brokerId != null && it.brokerId in sampleBrokers) it.copy(brokerId = null) else it },
         brokers = d.brokers.filterNot { it.sample },
         interactions = d.interactions.filterNot { it.sample || (it.propertyId != null && it.propertyId in sampleProps) }
             .map { if (it.brokerId != null && it.brokerId in sampleBrokers) it.copy(brokerId = null) else it },
         guidelines = d.guidelines.filterNot { it.sample },
+        settings = d.settings.copy(geminiModel = normalizeGeminiModel(d.settings.geminiModel)),
+        properties = d.properties.filterNot { it.sample }
+            .map { if (it.brokerId != null && it.brokerId in sampleBrokers) it.copy(brokerId = null) else it }
+            .map { com.hark.sothudiary.domain.repairTitle(it, d.settings.lang) },
     )
 }
 
@@ -184,6 +197,27 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
     }
 
     // ---- Settings / data management ----
+    /** Saves a cover found later (backfill / reader) without touching a photo the user picked; optionally fixes a placeholder title. */
+    fun setCover(propertyId: String, imageFile: String?, imageUrl: String?, extraPhoto: String? = null, title: String? = null, caption: String? = null) = update { d ->
+        d.copy(properties = d.properties.map { p ->
+            if (p.id != propertyId) p else p.copy(
+                imageFile = if (p.imageFile.isBlank() && imageFile != null) imageFile else p.imageFile,
+                imageUrl = imageUrl?.takeIf { it.isNotBlank() } ?: p.imageUrl,
+                photos = if (extraPhoto != null && extraPhoto !in p.photos) p.photos + extraPhoto else p.photos,
+                title = if (title != null && com.hark.sothudiary.domain.isPlaceholderTitle(p.title)) title else p.title,
+                sourceCaption = if (p.sourceCaption.isBlank() && caption != null) caption else p.sourceCaption,
+            )
+        })
+    }
+
+    /** Makes one of the saved photos the cover (the old cover joins the extra photos). */
+    fun makeCover(propertyId: String, file: String) = update { d ->
+        d.copy(properties = d.properties.map { p ->
+            if (p.id != propertyId || p.imageFile == file) p
+            else p.copy(imageFile = file, photos = (listOfNotNull(p.imageFile.ifBlank { null }) + p.photos).filter { it != file }.distinct())
+        })
+    }
+
     fun setLang(lang: Lang) = update { d -> d.copy(settings = d.settings.copy(lang = lang)) }
 
     fun setTheme(mode: ThemeMode) = update { d -> d.copy(settings = d.settings.copy(theme = mode)) }
@@ -195,7 +229,7 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
     fun setOnboarded() = update { d -> d.copy(settings = d.settings.copy(onboarded = true)) }
 
     fun setApiKeys(youtube: String, gemini: String, model: String) = update { d ->
-        d.copy(settings = d.settings.copy(youtubeApiKey = youtube.trim(), geminiApiKey = gemini.trim(), geminiModel = model.trim().ifBlank { "gemini-2.5-flash" }))
+        d.copy(settings = d.settings.copy(youtubeApiKey = youtube.trim(), geminiApiKey = gemini.trim(), geminiModel = normalizeGeminiModel(model)))
     }
 
     fun setReviews(propertyId: String, reviews: List<Review>) = update { d ->

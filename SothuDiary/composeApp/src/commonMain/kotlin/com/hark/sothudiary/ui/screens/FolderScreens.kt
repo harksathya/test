@@ -75,67 +75,87 @@ import com.hark.sothudiary.ui.components.FolderTile
 import com.hark.sothudiary.ui.components.PropertyCard
 import com.hark.sothudiary.ui.components.PropertyImage
 import com.hark.sothudiary.ui.components.bucket
-import com.hark.sothudiary.ui.components.folderBrush
+import com.hark.sothudiary.ui.components.FolderGlyph
+import com.hark.sothudiary.ui.components.SourceLogo
+import com.hark.sothudiary.ui.components.ThumbStack
 import com.hark.sothudiary.ui.components.propertyImageModel
-import com.hark.sothudiary.ui.components.sourceBrush
-import com.hark.sothudiary.ui.components.sourceIcon
 
 val SOURCE_BUCKETS = listOf(SourcePlatform.YOUTUBE, SourcePlatform.INSTAGRAM, SourcePlatform.FACEBOOK, SourcePlatform.WHATSAPP, SourcePlatform.OTHER)
 
 @Composable
 fun sourceName(p: SourcePlatform): String = if (p.bucket() == SourcePlatform.OTHER) S.othersSource.s() else p.tr().s()
 
-/** Grid of source tiles (YouTube, Instagram, …) followed by the user's own folders. */
+/** Compact grid (2 columns, 3 when wide) of fixed-width cells. */
 @OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CompactGrid(wide: Boolean, content: @Composable (Modifier) -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val cols = if (wide || maxWidth > 600.dp) 3 else 2
+        val gap = 10.dp
+        val cell = (maxWidth - gap * (cols - 1)) / cols
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap), verticalArrangement = Arrangement.spacedBy(gap)) {
+            content(Modifier.width(cell))
+        }
+    }
+}
+
+/** Compact source tiles (real brand logos) for YouTube, Instagram, … */
+@Composable
+fun SourceTiles(ctx: AppContext) {
+    val data = ctx.repo.data
+    CompactGrid(ctx.wide) { cell ->
+        SOURCE_BUCKETS.forEach { src ->
+            val props = data.properties.filter { it.sourcePlatform.bucket() == src }.sortedByDescending { it.createdAt }
+            FolderTile(
+                title = sourceName(src), count = props.size,
+                thumbs = props.mapNotNull { propertyImageModel(ctx.platform, it) }.take(3),
+                onClick = { ctx.nav.select(Route.FolderView(source = src.name)) },
+                modifier = cell,
+            ) { SourceLogo(src, 20.dp) }
+        }
+    }
+}
+
+/** Source tiles followed by the user's own folders – all compact. */
 @Composable
 fun SourcesAndFolders(ctx: AppContext, checks: Map<String, PriceCheck>, showFolders: Boolean = true) {
     val data = ctx.repo.data
     var creating by remember { mutableStateOf(false) }
-    val tileWidth = if (ctx.wide) 180.dp else 160.dp
-    Text(S.bySource.s(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp, top = 4.dp))
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SOURCE_BUCKETS.forEach { src ->
-            val props = data.properties.filter { it.sourcePlatform.bucket() == src }.sortedByDescending { it.createdAt }
-            FolderTile(
-                title = sourceName(src), count = props.size, brush = sourceBrush(src), icon = sourceIcon(src),
-                thumbs = props.take(3).map { propertyImageModel(ctx.platform, it) },
-                onClick = { ctx.nav.select(Route.FolderView(source = src.name)) },
-                modifier = Modifier.width(tileWidth),
-            )
-        }
-    }
+    Text(S.bySource.s(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp, top = 4.dp))
+    SourceTiles(ctx)
     if (!showFolders) return
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(18.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(S.myFolders.s(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Text(S.myFolders.s(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
         TextButton(onClick = { creating = true }) {
             Icon(Icons.Filled.CreateNewFolder, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(S.newFolder.s())
         }
     }
-    Spacer(Modifier.height(8.dp))
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Spacer(Modifier.height(4.dp))
+    CompactGrid(ctx.wide) { cell ->
         data.folders.forEach { folder ->
             val props = data.properties.filter { folder.id in it.folderIds }.sortedByDescending { it.createdAt }
             FolderTile(
-                title = folder.name, count = props.size, brush = folderBrush(folder.color), icon = Icons.Filled.Folder,
-                thumbs = props.take(3).map { propertyImageModel(ctx.platform, it) },
+                title = folder.name, count = props.size,
+                thumbs = props.mapNotNull { propertyImageModel(ctx.platform, it) }.take(3),
                 onClick = { ctx.nav.select(Route.FolderView(folderId = folder.id)) },
-                modifier = Modifier.width(tileWidth),
-            )
+                modifier = cell,
+            ) { FolderGlyph(folder.color) }
         }
         // "New folder" tile
-        Box(
-            Modifier.width(tileWidth).aspectRatio(1.05f).clip(RoundedCornerShape(20.dp))
-                .border(2.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
-                .clickable { creating = true },
-            contentAlignment = Alignment.Center,
+        Row(
+            cell.height(64.dp).clip(RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                .clickable { creating = true }.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.CreateNewFolder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
-                Spacer(Modifier.height(6.dp))
-                Text(S.newFolder.s(), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                Text(S.newFolderHint.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 10.dp), maxLines = 2)
+            Icon(Icons.Filled.CreateNewFolder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(S.newFolder.s(), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                Text(S.newFolderHint.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -196,7 +216,7 @@ fun FolderViewScreen(ctx: AppContext, route: Route.FolderView) {
     Scaffold(
         topBar = {
             AppTopBar(
-                title, ctx.toggleLang, onBack = { ctx.nav.pop() }, subtitle = S.nResults.f(props.size),
+                title, ctx.toggleLang, onBack = { ctx.nav.pop() },
                 actions = {
                     if (folder != null) {
                         IconButton(onClick = { renaming = true }) { Icon(Icons.Filled.Edit, contentDescription = S.renameFolder.s()) }
@@ -225,23 +245,24 @@ fun FolderViewScreen(ctx: AppContext, route: Route.FolderView) {
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            // Hero band in the folder / brand colour
-            Box(
-                Modifier.fillMaxWidth().height(86.dp)
-                    .background(folder?.let { folderBrush(it.color) } ?: source?.let { sourceBrush(it) } ?: folderBrush(0xFF0B5CAD)),
+            // Calm header: logo / folder glyph, name, count and total
+            Row(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(Modifier.align(Alignment.CenterStart).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (folder != null) Icons.Filled.FolderOpen else sourceIcon(source ?: SourcePlatform.OTHER), contentDescription = null,
-                        tint = Color.White, modifier = Modifier.size(36.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        val total = props.sumOf { it.askingPrice }
-                        Text(S.nResults.f(props.size) + if (total > 0) " • " + priceShort(total, LocalLang.current) else "",
-                            color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium)
-                    }
+                Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                    if (folder != null) FolderGlyph(folder.color, 26.dp) else SourceLogo(source ?: SourcePlatform.OTHER, 26.dp)
                 }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    val total = props.sumOf { it.askingPrice }
+                    Text(com.hark.sothudiary.i18n.propertiesCount(props.size) + if (total > 0) " • " + priceShort(total, LocalLang.current) else "",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                }
+                ThumbStack(props.mapNotNull { propertyImageModel(ctx.platform, it) }.take(3), size = 30.dp)
             }
+            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             if (props.isEmpty()) {
                 EmptyState(Icons.Filled.FolderOpen, S.folderEmpty.s(), if (folder != null) S.folderEmptyBody.s() else S.sourceEmptyBody.s())
             } else {

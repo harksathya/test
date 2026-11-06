@@ -37,7 +37,14 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SquareFoot
 import androidx.compose.material.icons.filled.Terrain
+import androidx.compose.foundation.Image
+import androidx.compose.material3.Surface
+import com.hark.sothudiary.ui.theme.LocalBrand
 import androidx.compose.material3.Card
+import androidx.compose.foundation.Image
+import androidx.compose.material3.Surface
+import androidx.compose.ui.unit.Dp
+import com.hark.sothudiary.ui.theme.LocalBrand
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -90,38 +97,51 @@ fun typeIcon(t: PropertyType): ImageVector = when (t) {
 /** "Others" groups OTHER and NONE together. */
 fun SourcePlatform.bucket(): SourcePlatform = if (this == SourcePlatform.NONE) SourcePlatform.OTHER else this
 
-fun sourceBrush(p: SourcePlatform): Brush = when (p.bucket()) {
-    SourcePlatform.YOUTUBE -> Brush.linearGradient(listOf(Color(0xFFFF4E45), Color(0xFFB80F0A)))
-    SourcePlatform.INSTAGRAM -> Brush.linearGradient(listOf(Color(0xFFFEDA75), Color(0xFFFA7E1E), Color(0xFFD62976), Color(0xFF962FBF), Color(0xFF4F5BD5)))
-    SourcePlatform.FACEBOOK -> Brush.linearGradient(listOf(Color(0xFF3B8BFF), Color(0xFF0D56C9)))
-    SourcePlatform.WHATSAPP -> Brush.linearGradient(listOf(Color(0xFF4AE07A), Color(0xFF128C4A)))
-    else -> Brush.linearGradient(listOf(Color(0xFF5B7286), Color(0xFF2C3E50)))
+fun sourceIcon(p: SourcePlatform): ImageVector = brandLogo(p.bucket()) ?: Icons.Filled.Link
+
+/** Brand mark (real logo, own colours) or a neutral link glyph for "Others". */
+@Composable
+fun SourceLogo(p: SourcePlatform, size: Dp = 18.dp, modifier: Modifier = Modifier) {
+    val logo = brandLogo(p.bucket())
+    if (logo != null) Image(logo, contentDescription = p.tr().s(), modifier = modifier.size(size))
+    else Icon(Icons.Filled.Link, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier.size(size))
 }
 
-fun sourceIcon(p: SourcePlatform): ImageVector = when (p.bucket()) {
-    SourcePlatform.YOUTUBE -> Icons.Filled.PlayCircle
-    SourcePlatform.INSTAGRAM -> Icons.Filled.PhotoCamera
-    SourcePlatform.FACEBOOK -> Icons.Filled.Facebook
-    SourcePlatform.WHATSAPP -> Icons.Filled.Chat
-    else -> Icons.Filled.Link
+/** Small white disc with the brand mark – sits on top of photos. */
+@Composable
+fun SourceBadge(p: SourcePlatform, modifier: Modifier = Modifier, size: Dp = 28.dp) {
+    Surface(modifier = modifier.size(size), shape = CircleShape, color = Color.White, shadowElevation = 2.dp) {
+        Box(contentAlignment = Alignment.Center) { SourceLogo(p, size * 0.6f) }
+    }
 }
 
-fun typeBrush(t: PropertyType): Brush = when (t) {
-    PropertyType.HOUSE -> Brush.linearGradient(listOf(Color(0xFF4F8DF5), Color(0xFF1F4FA8)))
-    PropertyType.APARTMENT -> Brush.linearGradient(listOf(Color(0xFF7C6CF2), Color(0xFF3D2F9E)))
-    PropertyType.FARMLAND, PropertyType.AGRI_LAND -> Brush.linearGradient(listOf(Color(0xFF6CC56F), Color(0xFF1E7A3A)))
-    else -> Brush.linearGradient(listOf(Color(0xFF26B5A5), Color(0xFF0B6E7F)))
-}
-
-/** Photo with a gradient + type icon placeholder underneath (shown while loading or when there is no photo). */
+/** Calm placeholder (neutral surface + faint type glyph) under the photo, shown while loading or when there is none. */
 @Composable
 fun PropertyImage(model: String?, type: PropertyType, modifier: Modifier = Modifier, overlay: @Composable BoxScope.() -> Unit = {}) {
-    Box(modifier.background(typeBrush(type))) {
-        Icon(typeIcon(type), contentDescription = null, tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.size(64.dp).align(Alignment.Center))
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+        Icon(typeIcon(type), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.32f),
+            modifier = Modifier.fillMaxSize(0.34f).align(Alignment.Center))
         if (model != null) {
             AsyncImage(model = model, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
         overlay()
+    }
+}
+
+/** Two or three overlapping rounded thumbnails; draws nothing when there are none. */
+@Composable
+fun ThumbStack(thumbs: List<String>, size: Dp = 28.dp, modifier: Modifier = Modifier) {
+    val list = thumbs.take(3)
+    if (list.isEmpty()) return
+    val step = size * 0.58f
+    Box(modifier.width(size + step * (list.size - 1)).height(size)) {
+        list.forEachIndexed { i, t ->
+            Box(
+                Modifier.offset(x = step * i).size(size).clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface).padding(1.5.dp).clip(RoundedCornerShape(7.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) { AsyncImage(model = t, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+        }
     }
 }
 
@@ -143,28 +163,24 @@ fun PropertyCard(
         modifier = Modifier.fillMaxWidth().animateContentSize(),
         shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
-        border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (LocalBrand.current.dark) 0.dp else 1.dp),
     ) {
         PropertyImage(image, p.type, Modifier.fillMaxWidth().height(158.dp)) {
             // dark fade at the bottom for the price
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.72f))))
+            if (image != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.62f))))
             Row(Modifier.align(Alignment.TopStart).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 GlassPill(p.type.tr().s())
                 if (check != null && check.verdict != Verdict.UNKNOWN) Pill(check.verdict.shortTr().s(), verdictColor(check.verdict), filled = true)
             }
-            if (p.sourcePlatform != SourcePlatform.NONE) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(10.dp).size(30.dp).clip(CircleShape).background(sourceBrush(p.sourcePlatform)),
-                    contentAlignment = Alignment.Center,
-                ) { Icon(sourceIcon(p.sourcePlatform), contentDescription = p.sourcePlatform.tr().s(), tint = Color.White, modifier = Modifier.size(18.dp)) }
-            }
+            if (p.sourcePlatform != SourcePlatform.NONE) SourceBadge(p.sourcePlatform, Modifier.align(Alignment.TopEnd).padding(10.dp))
             Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                val fg = if (image != null) Color.White else MaterialTheme.colorScheme.onSurface
                 Text(
                     if (p.askingPrice > 0) priceShort(p.askingPrice, lang) else S.priceOnRequest.s(),
-                    color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold,
+                    color = fg, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 )
-                Text(unitPriceLine(p), color = Color.White.copy(alpha = 0.88f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(unitPriceLine(p), color = fg.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
@@ -196,13 +212,15 @@ fun PropertyCard(
 @Composable
 fun PropertyMiniCard(p: Property, image: String?, check: PriceCheck?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val lang = LocalLang.current
-    Card(onClick = onClick, modifier = modifier.width(210.dp), shape = CardShape, elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    Card(onClick = onClick, modifier = modifier.width(196.dp), shape = CardShape, elevation = CardDefaults.cardElevation(defaultElevation = if (LocalBrand.current.dark) 0.dp else 1.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         PropertyImage(image, p.type, Modifier.fillMaxWidth().height(112.dp)) {
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f))))
+            if (image != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.62f))))
+            if (p.sourcePlatform != SourcePlatform.NONE) SourceBadge(p.sourcePlatform, Modifier.align(Alignment.TopStart).padding(8.dp), size = 24.dp)
             Text(
                 if (p.askingPrice > 0) priceShort(p.askingPrice, lang) else "—",
-                color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp,
+                color = if (image != null) Color.White else MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 17.sp,
                 modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
             )
             if (check != null && check.verdict != Verdict.UNKNOWN) {
@@ -234,60 +252,44 @@ fun IconLine(icon: ImageVector, text: String) {
 }
 
 /**
- * Folder-like tile: gradient background, icon, name, count and up to three stacked thumbnails.
+ * Compact folder: small logo / folder glyph, name, count and (only when there are photos) a tiny stack of thumbnails.
  */
 @Composable
 fun FolderTile(
     title: String,
     count: Int,
-    brush: Brush,
-    icon: ImageVector,
-    thumbs: List<String?>,
+    thumbs: List<String>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    subtitle: String? = null,
+    leading: @Composable () -> Unit,
 ) {
-    Card(onClick = onClick, modifier = modifier.aspectRatio(1.05f), shape = CardShape, elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
-        Box(Modifier.fillMaxSize().background(brush)) {
-            // folder tab
-            Box(Modifier.padding(start = 14.dp).size(width = 46.dp, height = 8.dp).clip(RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
-                .background(Color.White.copy(alpha = 0.35f)))
-            Column(Modifier.fillMaxSize().padding(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
-                        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Text(count.toString(), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 26.sp)
-                }
-                Spacer(Modifier.weight(1f))
-                // stacked thumbnails
-                if (thumbs.isNotEmpty()) {
-                    Box(Modifier.height(40.dp)) {
-                        thumbs.take(3).forEachIndexed { i, t ->
-                            Box(
-                                Modifier.offset(x = (i * 26).dp).size(40.dp).clip(RoundedCornerShape(10.dp))
-                                    .background(Color.White.copy(alpha = 0.3f)),
-                            ) {
-                                if (t != null) AsyncImage(model = t, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                Text(title, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (subtitle != null) Text(subtitle, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(64.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = if (LocalBrand.current.dark) 0.dp else 1.dp,
+    ) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                leading()
             }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(com.hark.sothudiary.i18n.propertiesCount(count), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+            ThumbStack(thumbs, size = 26.dp)
         }
     }
 }
 
-fun folderBrush(argb: Long): Brush {
-    val c = Color(argb)
-    return Brush.linearGradient(listOf(c.copy(alpha = 0.85f), c))
+/** Glyph for a user folder: a folder icon in the folder's (muted) colour. */
+@Composable
+fun FolderGlyph(argb: Long, size: Dp = 20.dp) {
+    Icon(Icons.Filled.Folder, contentDescription = null, tint = Color(argb), modifier = Modifier.size(size))
 }
 
-val FOLDER_COLORS = listOf(0xFF0B5CAD, 0xFF00897B, 0xFF7C4DFF, 0xFFEF6C00, 0xFFD81B60, 0xFF2E7D32, 0xFF455A64, 0xFF6D4C41)
-
-@Suppress("unused")
-private val folderIcon = Icons.Filled.Folder
+/** Muted folder colours (used only for the small folder glyph). */
+val FOLDER_COLORS = listOf(0xFF2F6F68, 0xFF3F6C9A, 0xFF6F5E9A, 0xFFB0700E, 0xFFA2545E, 0xFF4D7A45, 0xFF5E6668, 0xFF85654A)

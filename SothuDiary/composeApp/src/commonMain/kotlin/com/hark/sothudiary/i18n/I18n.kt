@@ -26,3 +26,7 @@ fun Tr.s(): String = of(LocalLang.current)
 @Composable
 @ReadOnlyComposable
 fun Tr.f(vararg args: Any?): String = fill(of(LocalLang.current), args)
+
+/** "1 property" / "3 properties" (Tamil: "1 சொத்து" / "3 சொத்துகள்"). */
+@androidx.compose.runtime.Composable
+fun propertiesCount(n: Int): String = if (n == 1) S.oneProperty.s() else S.nResults.f(n)

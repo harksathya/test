@@ -61,6 +61,8 @@ data class Property(
     val reviewsFetchedAt: Long = 0,
     /** v2.1: claims found in the post text (keys of [com.hark.sothudiary.domain.PostClaim]) – to be verified. */
     val postClaims: Set<String> = emptySet(),
+    /** 2.1.1: extra photos saved from the post (e.g. the second carousel slide), file names in the images folder. */
+    val photos: List<String> = emptyList(),
 )
 
 /** A comment on the source post (YouTube / Instagram / Facebook), shown as a "user review". */
@@ -211,7 +213,7 @@ data class AppSettings(
     val youtubeApiKey: String = "",
     /** Optional Gemini API key (Google AI Studio) – "Find nearby rates online". */
     val geminiApiKey: String = "",
-    val geminiModel: String = "gemini-2.5-flash",
+    val geminiModel: String = "auto",
     /** The "set up live price check" card on Home was dismissed. */
     val keyCardDismissed: Boolean = false,
 )

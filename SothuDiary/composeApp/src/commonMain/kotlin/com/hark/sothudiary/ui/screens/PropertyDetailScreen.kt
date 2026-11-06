@@ -1,6 +1,7 @@
 package com.hark.sothudiary.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -114,7 +115,14 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.FilledTonalButton
 import com.hark.sothudiary.ui.components.PropertyImage
 import com.hark.sothudiary.ui.components.propertyImageModel
-import com.hark.sothudiary.ui.components.sourceIcon
+import com.hark.sothudiary.ui.components.SourceLogo
+import com.hark.sothudiary.domain.social.coverCandidates
+import com.hark.sothudiary.domain.social.downloadCover
+import com.hark.sothudiary.domain.social.imageExt
+import com.hark.sothudiary.domain.social.secondSlide
+import com.hark.sothudiary.domain.smartTitle
+import com.hark.sothudiary.domain.BROWSER_USER_AGENT
+import com.hark.sothudiary.httpBytes
 
 const val TN_REGINET_URL = "https://tnreginet.gov.in/portal/"
 
@@ -217,17 +225,18 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             // ---- Hero photo ----
             val image = propertyImageModel(ctx.platform, p)
             PropertyImage(image, p.type, Modifier.fillMaxWidth().height(if (ctx.wide) 240.dp else 210.dp).clip(RoundedCornerShape(20.dp))) {
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))))
+                if (image != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))))
                 Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (p.sourceUrl.isNotBlank()) {
                         FilledTonalButton(onClick = { ctx.platform.openUrl(p.sourceUrl) }) {
-                            Icon(sourceIcon(p.sourcePlatform), contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(S.openPost.s())
+                            SourceLogo(p.sourcePlatform, 18.dp); Spacer(Modifier.width(6.dp)); Text(S.openPost.s())
                         }
                     }
                     FilledTonalButton(onClick = {
                         ctx.platform.pickImage { name ->
                             if (name != null) {
                                 if (p.imageFile.isNotBlank()) ctx.platform.deleteImage(p.imageFile)
+                    p.photos.forEach { ctx.platform.deleteImage(it) }
                                 ctx.repo.setPropertyImage(p.id, name, null)
                             }
                         }
@@ -238,9 +247,21 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 }
                 Text(
                     if (p.askingPrice > 0) priceShort(p.askingPrice, lang) else S.priceOnRequest.s(),
-                    color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold,
+                    color = if (image != null) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
                 )
+            }
+
+            // ---- Extra photos from the post (e.g. the second carousel slide); tap one to make it the cover ----
+            if (p.photos.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    (listOfNotNull(p.imageFile.ifBlank { null }) + p.photos).forEach { f ->
+                        PropertyImage(ctx.platform.imagePath(f), p.type,
+                            Modifier.size(56.dp).clip(RoundedCornerShape(12.dp))
+                                .border(if (f == p.imageFile) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                                .clickable { ctx.repo.makeCover(p.id, f) })
+                    }
+                }
             }
 
             // ---- Header ----
@@ -343,7 +364,8 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             // ---- Source ----
             SectionCard(title = S.source.s()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Pill(p.sourcePlatform.tr().s(), platformColor(p.sourcePlatform), filled = p.sourcePlatform != SourcePlatform.NONE)
+                    if (p.sourcePlatform != SourcePlatform.NONE) { SourceLogo(p.sourcePlatform, 20.dp); Spacer(Modifier.width(8.dp)) }
+                    Text(p.sourcePlatform.tr().s(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 }
                 if (p.sourceUrl.isNotBlank()) {
                     Spacer(Modifier.height(6.dp))
@@ -432,6 +454,12 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 readerOpen = false
                 if (post.comments.isNotEmpty()) ctx.repo.setReviews(p.id, (post.comments + p.reviews).distinctBy { it.author + it.text.take(60) }.take(15))
                 else ctx.platform.toast(msgNoReviews)
+                // The logged-in reader also gives the post's picture and caption: use them for the cover and a real title.
+                scope.launch {
+                    val cover = if (p.imageFile.isBlank()) downloadCover(coverCandidates(p.sourceUrl, post), post.snapshot) { b, ext -> ctx.platform.saveImage(b, ext) } else null
+                    val extra = secondSlide(post)?.let { u -> runCatching { httpBytes(u, BROWSER_USER_AGENT) }.getOrNull()?.let { ctx.platform.saveImage(it, imageExt(u, it)) } }
+                    ctx.repo.setCover(p.id, cover?.file, cover?.url, extra, title = smartTitle(post.caption, lang), caption = post.caption)
+                }
             },
             onDismiss = { readerOpen = false },
         )
@@ -459,6 +487,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                     confirmDelete = false
                     data.interactions.filter { it.propertyId == p.id }.flatMap { it.voiceNotes }.forEach { ctx.platform.audio.deleteAudio(it.fileName) }
                     if (p.imageFile.isNotBlank()) ctx.platform.deleteImage(p.imageFile)
+                    p.photos.forEach { ctx.platform.deleteImage(it) }
                     ctx.repo.deleteProperty(p.id)
                     ctx.nav.pop()
                 }) {

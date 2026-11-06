@@ -73,7 +73,8 @@ import com.hark.sothudiary.ui.components.PropertyCard
 import com.hark.sothudiary.ui.components.PrimaryButton
 import com.hark.sothudiary.ui.components.bucket
 import com.hark.sothudiary.ui.components.propertyImageModel
-import com.hark.sothudiary.ui.components.sourceBrush
+import com.hark.sothudiary.ui.components.SourceLogo
+import com.hark.sothudiary.ui.components.ThumbStack
 import com.hark.sothudiary.ui.GroupBy
 import com.hark.sothudiary.ui.ListMode
 import com.hark.sothudiary.data.SourcePlatform
@@ -245,7 +246,7 @@ fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
                             GroupBy.entries.forEach { g ->
                                 FilterChip(
                                     selected = f.group == g,
-                                    onClick = { f.group = g; f.collapsed = emptySet() },
+                                    onClick = { f.group = g },
                                     label = { Text(g.label()) },
                                     shape = RoundedCornerShape(50),
                                 )
@@ -290,12 +291,14 @@ fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
                     groups.forEach { (key, title, items) ->
                         if (f.group != GroupBy.NONE) {
                             stickyHeader(key = "h_$key") {
-                                GroupHeader(title, items.size, collapsed = key in f.collapsed, brush = if (f.group == GroupBy.SOURCE) sourceBrush(items.first().sourcePlatform) else null) {
-                                    f.collapsed = if (key in f.collapsed) f.collapsed - key else f.collapsed + key
-                                }
+                                GroupHeader(
+                                    title, items.size, collapsed = !f.isExpanded(key),
+                                    source = if (f.group == GroupBy.SOURCE) items.first().sourcePlatform else null,
+                                    thumbs = items.mapNotNull { propertyImageModel(ctx.platform, it) }.take(3),
+                                ) { f.toggleGroup(key) }
                             }
                         }
-                        if (key !in f.collapsed) {
+                        if (f.group == GroupBy.NONE || f.isExpanded(key)) {
                             items(items, key = { "p_" + it.id }) { p ->
                                 Box(Modifier.animateItem()) {
                                     PropertyCard(
@@ -318,21 +321,28 @@ fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
 }
 
 @Composable
-private fun GroupHeader(title: String, count: Int, collapsed: Boolean, brush: Brush?, onToggle: () -> Unit) {
+private fun GroupHeader(title: String, count: Int, collapsed: Boolean, source: SourcePlatform?, thumbs: List<String>, onToggle: () -> Unit) {
     Surface(
         onClick = onToggle,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 2.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = if (com.hark.sothudiary.ui.theme.LocalBrand.current.dark) 0.dp else 1.dp,
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).clip(CircleShape).background(brush ?: Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary))))
+            Box(Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                if (source != null) SourceLogo(source, 18.dp)
+                else Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            }
             Spacer(Modifier.width(10.dp))
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Badge(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) { Text(count.toString()) }
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(com.hark.sothudiary.i18n.propertiesCount(count), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (collapsed) ThumbStack(thumbs, size = 26.dp)
             Spacer(Modifier.width(6.dp))
-            Icon(if (collapsed) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess, contentDescription = null)
+            Icon(if (collapsed) Icons.Filled.ExpandMore else Icons.Filled.ExpandLess, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

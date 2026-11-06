@@ -27,10 +27,19 @@ data class SocialPost(
     val author: String? = null,
     val image: String? = null,
     val comments: List<Review> = emptyList(),
+    /** All media found, best first (carousel: first slide, then the second). [image] is the first of these. */
+    val images: List<String> = emptyList(),
+    /** PNG/JPEG of the post's media captured from the in-app reader, used when no image link can be downloaded. */
+    val snapshot: ByteArray? = null,
+    /** Carousel slides in order (Instagram), when known. */
+    val slides: List<String> = emptyList(),
     /** Which methods produced data, e.g. "og:facebookexternalhit", "instagram-embed" – for diagnostics. */
     val methods: List<String> = emptyList(),
 ) {
     val hasText: Boolean get() = !caption.isNullOrBlank() || !title.isNullOrBlank()
+
+    /** Every image link found, best first. */
+    val allImages: List<String> get() = (listOfNotNull(image) + images).distinct()
 
     /** Fills only what is missing from [other]. */
     fun merge(other: SocialPost?): SocialPost {
@@ -40,6 +49,9 @@ data class SocialPost(
             caption = if (caption.isNullOrBlank() || (other.caption?.length ?: 0) > caption.length + 40) other.caption ?: caption else caption,
             author = author ?: other.author,
             image = image ?: other.image,
+            images = (images + listOfNotNull(image) + other.images + listOfNotNull(other.image)).distinct(),
+            snapshot = snapshot ?: other.snapshot,
+            slides = slides.ifEmpty { other.slides },
             comments = (comments + other.comments).distinctBy { it.author + "|" + it.text.take(60) },
             methods = methods + other.methods,
         )
@@ -144,6 +156,7 @@ fun parseInstagramEmbed(url: String, html: String): SocialPost? {
     var author: String? = null
     var image: String? = null
     val comments = mutableListOf<Review>()
+    val slides = mutableListOf<String>()
 
     // (1) Embedded JSON: "contextJSON":"{...}" or window.__additionalDataLoaded('extra', {...})
     val ctx = jsStringAfter(html, "\"contextJSON\":\"")?.let { parseJsonOrNull(it) }
@@ -155,6 +168,7 @@ fun parseInstagramEmbed(url: String, html: String): SocialPost? {
         caption = media.at("edge_media_to_caption", "edges", 0, "node", "text").str()
         author = media.at("owner", "username").str()
         image = media["display_url"].str() ?: media["thumbnail_src"].str()
+        media.at("edge_sidecar_to_children", "edges").arr().mapNotNull { it.at("node", "display_url").str() }.forEach { slides += it }
         val edges = (media.at("edge_media_to_parent_comment", "edges") ?: media.at("edge_media_preview_comment", "edges")).arr()
         edges.forEach { e ->
             val n = e["node"]
@@ -188,7 +202,9 @@ fun parseInstagramEmbed(url: String, html: String): SocialPost? {
     }
     if (author == null) author = Regex("""class="UsernameText"[^>]*>([^<]+)<""").find(html)?.groupValues?.get(1)?.trim()
     if (caption == null && comments.isEmpty() && image == null) return null
-    return SocialPost(url, SourcePlatform.INSTAGRAM, caption = caption, author = author, image = image, comments = comments.take(10), methods = listOf("instagram-embed"))
+    val all = (slides + listOfNotNull(image)).distinct()
+    return SocialPost(url, SourcePlatform.INSTAGRAM, caption = caption, author = author, image = all.firstOrNull(), images = all, slides = slides,
+        comments = comments.take(10), methods = listOf("instagram-embed"))
 }
 
 fun epochToDate(seconds: Long): String {
@@ -273,7 +289,9 @@ suspend fun youtubeDetails(videoId: String): SocialPost? {
     return SocialPost(
         "https://youtu.be/$videoId", SourcePlatform.YOUTUBE,
         title = d["title"].str(), caption = d["shortDescription"].str(), author = d["author"].str(),
-        image = "https://img.youtube.com/vi/$videoId/hqdefault.jpg", methods = listOf("youtube-innertube-player"),
+        image = "https://img.youtube.com/vi/$videoId/maxresdefault.jpg",
+        images = listOf("https://img.youtube.com/vi/$videoId/maxresdefault.jpg", "https://img.youtube.com/vi/$videoId/hqdefault.jpg"),
+        methods = listOf("youtube-innertube-player"),
     )
 }
 
@@ -459,9 +477,13 @@ fun postFromReaderJson(url: String, json: String?): SocialPost? {
         Review(author = c["author"].str() ?: "", text = text.take(600), likes = c["likes"].num(), date = c["date"].str() ?: "", source = platformOf(url))
     }
     val caption = j["caption"].str()?.let { cleanReaderCaption(it) }
+    val images = (j["images"].arr().mapNotNull { it.str() } + listOfNotNull(j["image"].str()))
+        .filter { it.startsWith("http") }.distinct()
     return SocialPost(
-        url, platformOf(url), title = j["title"].str(), caption = caption, author = j["author"].str(),
-        image = j["image"].str(), comments = comments.distinctBy { it.text }.take(10), methods = listOf("webview"),
+        url, platformOf(url), title = j["title"].str()?.takeUnless { com.hark.sothudiary.domain.isPlaceholderTitle(it) }, caption = caption,
+        author = j["author"].str(), image = images.firstOrNull(), images = images,
+        slides = j["slides"].arr().mapNotNull { it.str() }.filter { it.startsWith("http") }.distinct(),
+        comments = comments.distinctBy { it.text }.take(10), methods = listOf("webview"),
     ).takeIf { it.hasText || it.comments.isNotEmpty() || it.image != null }
 }
 

@@ -52,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -83,7 +84,7 @@ fun AppTopBar(
             Column {
                 Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                 if (subtitle != null) {
-                    Text(subtitle, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
+                    Text(subtitle, style = MaterialTheme.typography.labelMedium, color = LocalBrand.current.onBar.copy(alpha = 0.6f), maxLines = 1)
                 }
             }
         },
@@ -108,26 +109,27 @@ fun AppTopBar(
 @Composable
 fun LangToggle(onToggle: () -> Unit) {
     val lang = LocalLang.current
+    val fg = LocalBrand.current.onBar
+    val sel = MaterialTheme.colorScheme.primary
     Surface(
         onClick = onToggle,
         shape = RoundedCornerShape(50),
-        color = Color.White.copy(alpha = 0.15f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = Modifier.padding(end = 8.dp),
     ) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "த", color = Color.White, fontSize = 14.sp,
-                fontWeight = if (lang == Lang.TA) FontWeight.ExtraBold else FontWeight.Normal,
-                modifier = Modifier.background(if (lang == Lang.TA) Color.White.copy(alpha = 0.25f) else Color.Transparent, RoundedCornerShape(50))
-                    .padding(horizontal = 6.dp),
+                "த", color = if (lang == Lang.TA) MaterialTheme.colorScheme.onPrimary else fg.copy(alpha = 0.7f), fontSize = 13.sp,
+                fontWeight = if (lang == Lang.TA) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier.background(if (lang == Lang.TA) sel else Color.Transparent, RoundedCornerShape(50))
+                    .padding(horizontal = 8.dp, vertical = 1.dp),
             )
-            Text(" / ", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
             Text(
-                "EN", color = Color.White, fontSize = 13.sp,
-                fontWeight = if (lang == Lang.EN) FontWeight.ExtraBold else FontWeight.Normal,
-                modifier = Modifier.background(if (lang == Lang.EN) Color.White.copy(alpha = 0.25f) else Color.Transparent, RoundedCornerShape(50))
-                    .padding(horizontal = 6.dp),
+                "EN", color = if (lang == Lang.EN) MaterialTheme.colorScheme.onPrimary else fg.copy(alpha = 0.7f), fontSize = 12.sp,
+                fontWeight = if (lang == Lang.EN) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier.background(if (lang == Lang.EN) sel else Color.Transparent, RoundedCornerShape(50))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
             )
         }
     }
@@ -136,13 +138,17 @@ fun LangToggle(onToggle: () -> Unit) {
 /** Small coloured pill. */
 @Composable
 fun Pill(text: String, color: Color, filled: Boolean = false, modifier: Modifier = Modifier) {
+    val dark = LocalBrand.current.dark
+    // On dark surfaces an outlined pill uses a lighter tint of its colour so the text stays readable.
+    val fg = if (dark && !filled) androidx.compose.ui.graphics.lerp(color, Color.White, 0.55f) else color
+    val onFilled = if (color.luminance() > 0.45f) Color(0xFF1D1C1A) else Color.White
     Box(
         modifier
-            .background(if (filled) color else color.copy(alpha = 0.12f), RoundedCornerShape(50))
+            .background(if (filled) color else color.copy(alpha = if (dark) 0.22f else 0.12f), RoundedCornerShape(50))
             .padding(horizontal = 9.dp, vertical = 3.dp),
     ) {
         Text(
-            text, color = if (filled) Color.White else color, fontSize = 11.5.sp,
+            text, color = if (filled) onFilled else fg, fontSize = 11.5.sp,
             fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }
@@ -419,11 +425,11 @@ fun StatTile(value: String, label: String, color: Color, modifier: Modifier = Mo
         ),
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = color)
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = com.hark.sothudiary.ui.theme.readable(color))
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
         }
     }
 }
 
 /** Highlight colour for values filled in automatically from a shared post / poster. */
-val AutoFillColor = Color(0xFFE08A00)
+val AutoFillColor = Color(0xFFB8740A)

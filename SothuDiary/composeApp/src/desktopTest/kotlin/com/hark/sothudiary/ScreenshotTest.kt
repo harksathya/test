@@ -77,10 +77,16 @@ class ScreenshotTest {
     }
 
     @Test fun renderScreens() {
-        shot("home_en", Lang.EN, ThemeMode.LIGHT) { HomeScreen(it) }
+        shot("home_en", Lang.EN, ThemeMode.LIGHT, h = 2300) { HomeScreen(it) }
         shot("home_ta_dark", Lang.TA, ThemeMode.DARK) { HomeScreen(it) }
+        shot("home_dark_en", Lang.EN, ThemeMode.DARK, h = 2300) { HomeScreen(it) }
+        shot("list", Lang.EN, ThemeMode.LIGHT) { PropertyListScreen(it, null) }
+        shot("list_dark", Lang.EN, ThemeMode.DARK) { PropertyListScreen(it, null) }
         shot("list_grouped", Lang.EN, ThemeMode.LIGHT) { it.filters.group = GroupBy.SOURCE; PropertyListScreen(it, null) }
+        shot("list_grouped_open_dark", Lang.EN, ThemeMode.DARK) { it.filters.group = GroupBy.SOURCE; it.filters.toggleGroup("YOUTUBE"); PropertyListScreen(it, null) }
         shot("folders", Lang.EN, ThemeMode.LIGHT) { it.filters.mode = ListMode.FOLDERS; PropertyListScreen(it, null) }
+        shot("folders_dark_ta", Lang.TA, ThemeMode.DARK) { it.filters.mode = ListMode.FOLDERS; PropertyListScreen(it, null) }
+        shot("folder_view", Lang.EN, ThemeMode.LIGHT) { FolderViewScreen(it, Route.FolderView(source = "INSTAGRAM")) }
         shot("detail_plot", Lang.EN, ThemeMode.LIGHT, h = 3000) { PropertyDetailScreen(it, "p1") }
         shot("detail_suspicious_ta", Lang.TA, ThemeMode.LIGHT, h = 2600) { PropertyDetailScreen(it, "p4") }
         shot("detail_farm", Lang.EN, ThemeMode.DARK, h = 2600) { PropertyDetailScreen(it, "p3") }
@@ -91,6 +97,7 @@ class ScreenshotTest {
         shot("interaction", Lang.TA, ThemeMode.LIGHT, h = 1800) { InteractionEditScreen(it, Route.InteractionEdit("i1", "p1", "b1")) }
         shot("map", Lang.EN, ThemeMode.LIGHT) { MapScreen(it) }
         shot("more", Lang.EN, ThemeMode.LIGHT, h = 800) { MoreScreen(it) }
+        shot("settings_en", Lang.EN, ThemeMode.LIGHT, h = 1800) { SettingsScreen(it) }
         shot("settings", Lang.TA, ThemeMode.LIGHT, h = 1800) { SettingsScreen(it) }
         shot("location_picker", Lang.EN, ThemeMode.LIGHT) {
             androidx.compose.foundation.layout.Box {

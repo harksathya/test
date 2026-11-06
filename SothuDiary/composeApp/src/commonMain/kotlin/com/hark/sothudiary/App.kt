@@ -132,6 +132,9 @@ fun App(
         }
     }
 
+    // Real cover photos (and titles) for properties saved without one – once per session, in the background.
+    LaunchedEffect(Unit) { runCatching { com.hark.sothudiary.domain.social.backfillCovers(repo, platform) } }
+
     LaunchedEffect(openFollowUps) {
         if (openFollowUps) {
             nav.switchTab(Tab.FOLLOWUPS)

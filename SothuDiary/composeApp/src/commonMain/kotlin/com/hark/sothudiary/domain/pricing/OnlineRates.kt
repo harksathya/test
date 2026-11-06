@@ -124,9 +124,22 @@ suspend fun liveLookup(
         put("tools", buildJsonArray { add(buildJsonObject { put("google_search", buildJsonObject { }) }) })
         put("generationConfig", buildJsonObject { put("temperature", 0.1) })
     }.toString()
-    val models = listOf(model.ifBlank { "gemini-2.5-flash" }, "gemini-2.5-flash", "gemini-2.0-flash").distinct()
+    val models = mutableListOf<String>()
+    com.hark.sothudiary.data.normalizeGeminiModel(model).takeIf { it != "auto" }?.let { models += it }
+    cachedBestModel?.let { if (it !in models) models += it }
+    var listed = false
     var lastError: String? = null
-    for (m in models) {
+    var i = 0
+    while (i < models.size || !listed) {
+        if (i >= models.size) {
+            // Models retire often: ask the API which ones this key can use and take the newest Flash.
+            listed = true
+            val avail = listGeminiModels(apiKey)
+            if (avail == null) { lastError = lastError ?: "network"; break }
+            pickModels(avail).forEach { if (it !in models) models += it }
+            if (i >= models.size) break
+        }
+        val m = models[i++]
         val r = httpRequest(
             "https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent?key=" + urlEncode(apiKey.trim()),
             method = "POST",
@@ -138,7 +151,11 @@ suspend fun liveLookup(
         if (!r.ok) {
             val msg = parseJsonOrNull(r.body).at("error", "message").str() ?: "HTTP ${r.code}"
             lastError = msg
-            if (r.code == 404 || msg.contains("not found", true) || msg.contains("not supported", true)) continue
+            // The error often names the replacement model ("use models/gemini-x-flash").
+            Regex("models/([a-z0-9.\\-]+)").findAll(msg).map { it.groupValues[1].trimEnd('.') }
+                .filter { it != m && it !in models }.forEach { models.add(i, it) }
+            if (r.code == 404 || r.code == 400 && msg.contains("model", true) || msg.contains("not found", true) ||
+                msg.contains("not supported", true) || msg.contains("no longer", true) || msg.contains("deprecated", true)) continue
             break
         }
         val root = parseJsonOrNull(r.body)
@@ -176,9 +193,42 @@ suspend fun liveLookup(
                 fetchedAt = now, note = o.s("note").take(120), lookupKey = key, distanceKm = dist,
             )
         }
+        cachedBestModel = m
         val lookup = RateLookup(key, lat, lng, group, place, now, out.size, skipped, m, null, sources.take(12))
         return LiveLookupResult(lookup, out)
     }
     val err = lastError ?: "failed"
-    return LiveLookupResult(RateLookup(key, lat, lng, group, place, now, model = models.first(), error = err), emptyList(), err)
+    return LiveLookupResult(RateLookup(key, lat, lng, group, place, now, model = models.firstOrNull() ?: "auto", error = err), emptyList(), err)
+}
+
+
+/** The model that last worked in this app session (models retire, so never hard-code one). */
+private var cachedBestModel: String? = null
+
+/** Model ids this key can call with generateContent, or null on a network failure. */
+private suspend fun listGeminiModels(apiKey: String): List<String>? {
+    val r = httpRequest(
+        "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + urlEncode(apiKey.trim()),
+        method = "GET", headers = emptyMap(), body = null, timeoutMs = 30_000,
+    ) ?: return null
+    if (!r.ok) return emptyList()
+    return parseJsonOrNull(r.body).at("models").arr()
+        .filter { m -> m.at("supportedGenerationMethods").arr().any { it.str() == "generateContent" } }
+        .mapNotNull { it.at("name").str()?.removePrefix("models/") }
+}
+
+/** Newest Flash first (stable before preview), then Pro; skips image/tts/live/embedding variants. */
+internal fun pickModels(ids: List<String>): List<String> {
+    val bad = listOf("image", "tts", "audio", "live", "embed", "vision", "thinking", "learnlm", "gemma", "aqa", "robotics", "computer")
+    fun version(id: String): Double = Regex("gemini-(\\d+(?:\\.\\d+)?)").find(id)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+    val usable = ids.filter { id -> id.startsWith("gemini-") && bad.none { it in id } }
+    fun rank(id: String): Int = when {
+        "flash" in id && "lite" !in id -> 0
+        "flash" in id -> 1
+        "pro" in id -> 2
+        else -> 3
+    }
+    return usable.sortedWith(
+        compareBy<String>({ rank(it) }, { -version(it) }, { if ("preview" in it || "exp" in it) 1 else 0 }, { if (it.endsWith("-latest")) 0 else 1 })
+    ).take(4)
 }

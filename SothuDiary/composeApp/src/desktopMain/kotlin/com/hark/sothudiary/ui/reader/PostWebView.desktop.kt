@@ -16,7 +16,7 @@ actual fun PostWebView(
     url: String,
     modifier: Modifier,
     extractTick: Int,
-    onExtracted: (String?) -> Unit,
+    onExtracted: (json: String?, mediaSnapshot: ByteArray?) -> Unit,
     onPageLoaded: (String) -> Unit,
     onProgress: (Int) -> Unit,
 ) {

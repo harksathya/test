@@ -8,14 +8,15 @@ expect val platformHasWebView: Boolean
 
 /**
  * An embedded browser showing [url]. Cookies persist, so a login to Instagram / Facebook done here once is kept.
- * Each time [extractTick] changes, the page is read with [READER_JS] and the JSON string is passed to [onExtracted].
+ * Each time [extractTick] changes, the page is read with [READER_JS] and the JSON string is passed to [onExtracted],
+ * together with a JPEG capture of the post's main media element (cropped to its on-screen bounds) when one is visible.
  */
 @Composable
 expect fun PostWebView(
     url: String,
     modifier: Modifier,
     extractTick: Int,
-    onExtracted: (String?) -> Unit,
+    onExtracted: (json: String?, mediaSnapshot: ByteArray?) -> Unit,
     onPageLoaded: (String) -> Unit,
     onProgress: (Int) -> Unit,
 )
@@ -56,6 +57,26 @@ const val READER_JS = """
  }catch(e){}
  if(!out.caption && ogd) out.caption=ogd;
  if(!out.caption){ var best=''; document.querySelectorAll('h1,p,span[dir="auto"],div[dir="auto"]').forEach(function(e){var t=txt(e); if(t.length>best.length && t.length<4000) best=t;}); if(best.length>30) out.caption=best; }
+ try{
+   // Media: the biggest visible images / video posters in the post (skipping avatars and icons), best first.
+   var root=document.querySelector('article')||document.querySelector('div[role="dialog"]')||document.querySelector('[role="main"]')||document.body;
+   var cands=[];
+   root.querySelectorAll('img, video').forEach(function(e){
+     var r=e.getBoundingClientRect(); var isV=e.tagName==='VIDEO';
+     var src=isV?(e.getAttribute('poster')||''):(e.currentSrc||e.src||'');
+     var nw=isV?(e.videoWidth||r.width):(e.naturalWidth||r.width);
+     if(r.width<120||r.height<120||nw<200) return;
+     if(/profile_pic|s150x150|emoji|rsrc\.php|static\.xx\.fbcdn/.test(src)) return;
+     cands.push({e:e,src:src,area:r.width*r.height});
+   });
+   cands.sort(function(a,b){return b.area-a.area;});
+   var imgs=[]; cands.forEach(function(c){ if(c.src && c.src.indexOf('http')===0 && imgs.indexOf(c.src)<0) imgs.push(c.src); });
+   if(out.image && imgs.indexOf(out.image)<0) imgs.push(out.image);
+   out.images=imgs; if(imgs.length) out.image=imgs[0];
+   var sl=[]; root.querySelectorAll('ul li img').forEach(function(i){ var s=i.currentSrc||i.src; var r=i.getBoundingClientRect(); if(r.width>150 && s && s.indexOf('http')===0 && sl.indexOf(s)<0) sl.push(s); });
+   if(sl.length>1) out.slides=sl;
+   if(cands.length){ var r=cands[0].e.getBoundingClientRect(); out.rect={x:r.left,y:r.top,w:r.width,h:r.height,vw:window.innerWidth,vh:window.innerHeight}; }
+ }catch(e){}
  out.login = /login|accounts\/login|checkpoint/.test(location.href) || !!document.querySelector('input[name="password"], input[name="pass"], input[type="password"]');
  out.url=location.href;
  return JSON.stringify(out);

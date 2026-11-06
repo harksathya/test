@@ -174,12 +174,12 @@ private fun PostReaderContent(url: String, onResult: (SocialPost) -> Unit, onDis
             url = target,
             modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(),
             extractTick = tick,
-            onExtracted = { json ->
+            onExtracted = { json, snap ->
                 reading = false
                 val obj = parseJsonOrNull(json)
                 needsLogin = (obj["login"] as? JsonPrimitive)?.booleanOrNull == true
-                val post = postFromReaderJson(url, json)
-                if (post != null && (post.caption != null || post.comments.isNotEmpty())) {
+                val post = postFromReaderJson(url, json)?.let { if (snap != null) it.copy(snapshot = snap) else it }
+                if (post != null && (post.caption != null || post.comments.isNotEmpty() || post.image != null || post.snapshot != null)) {
                     val prev = found
                     found = if (prev == null) post else post.merge(prev)
                 }

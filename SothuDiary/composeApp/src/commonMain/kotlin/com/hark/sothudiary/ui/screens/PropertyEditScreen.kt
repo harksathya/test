@@ -38,6 +38,13 @@ import com.hark.sothudiary.domain.social.SocialPost
 import com.hark.sothudiary.domain.social.fetchComments
 import com.hark.sothudiary.domain.social.platformOf
 import com.hark.sothudiary.domain.social.readPost
+import com.hark.sothudiary.domain.social.coverCandidates
+import com.hark.sothudiary.domain.social.downloadCover
+import com.hark.sothudiary.domain.social.imageExt
+import com.hark.sothudiary.domain.social.secondSlide
+import com.hark.sothudiary.domain.factsTitle
+import com.hark.sothudiary.domain.isPlaceholderTitle
+import com.hark.sothudiary.domain.smartTitle
 import com.hark.sothudiary.data.SourcePlatform
 import com.hark.sothudiary.httpBytes
 import com.hark.sothudiary.i18n.tr
@@ -110,7 +117,8 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
     val lang = LocalLang.current
     val existing = route.id?.let { id -> data.properties.firstOrNull { it.id == id } }
 
-    val initialTitle = existing?.title ?: route.prefillCaption.lineSequence().firstOrNull()?.take(70)?.trim().orEmpty()
+    // For shares the title is made from the post (facts first, then the caption's first meaningful line) – never "Instagram".
+    val initialTitle = existing?.title ?: ""
     var title by remember(route) { mutableStateOf(initialTitle) }
     var type by remember(route) { mutableStateOf(existing?.type ?: PropertyType.LAND) }
     var locality by remember(route) { mutableStateOf(existing?.locality ?: "") }
@@ -133,6 +141,7 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
     var quickBroker by remember { mutableStateOf(false) }
     var imageFile by remember(route) { mutableStateOf(existing?.imageFile ?: route.prefillImages.firstOrNull() ?: "") }
     var imageUrl by remember(route) { mutableStateOf(existing?.imageUrl ?: "") }
+    var photos by remember(route) { mutableStateOf(existing?.photos ?: emptyList()) }
     var folderIds by remember(route) { mutableStateOf(existing?.folderIds ?: setOfNotNull(route.folderId)) }
     var auto by remember(route) { mutableStateOf(setOf<String>()) }
     var typeTouched by remember(route) { mutableStateOf(existing != null) }
@@ -153,13 +162,11 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
     /** Fills only fields that are still empty, and marks them as auto-filled. */
     fun apply(pl: ParsedListing, author: String? = null) {
         val a = auto.toMutableSet()
-        if (title.isBlank()) {
-            val t = pl.title?.takeIf { it.count(Char::isLetter) >= 6 }
-                ?: listOfNotNull(
-                    pl.size?.let { dec(it, 2) + " " + (pl.unit ?: unit).tr().of(lang) },
-                    pl.type?.tr()?.of(lang),
-                    pl.placeText?.let { "– $it" },
-                ).joinToString(" ").takeIf { pl.type != null || pl.size != null }
+        if (title.isBlank() || "title" in a || isPlaceholderTitle(title)) {
+            val place = pl.placeText ?: pl.district
+            val t = factsTitle(pl.size, pl.unit, pl.type, place, lang)
+                ?: pl.title?.takeIf { it.count(Char::isLetter) >= 6 && !isPlaceholderTitle(it) }?.take(80)
+                ?: factsTitle(null, null, pl.type, place, lang, requireSize = false)
             if (!t.isNullOrBlank()) { title = t; a += "title" }
         }
         if (caption.isBlank() && !pl.description.isNullOrBlank()) { caption = pl.description; a += "caption" }
@@ -216,13 +223,21 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
             captionMissing = false
         }
         if (post.comments.isNotEmpty()) reviews = (post.comments + reviews).distinctBy { it.author + it.text.take(60) }.take(15)
-        val img = post.image
-        if (img != null && imageFile.isBlank()) {
-            // CDN links of Instagram / Facebook expire: keep a copy, and read any text printed on it.
+        // Cover: YouTube maxres → hq thumbnail; Instagram / Facebook post media (carousel: first slide);
+        // the reader's capture of the media as the last resort. CDN links expire, so a copy is kept.
+        val candidates = coverCandidates(url.ifBlank { post.url }, post)
+        if (imageFile.isBlank() && (candidates.isNotEmpty() || post.snapshot != null)) {
             readStep = S.stepImage.of(lang)
-            val bytes = httpBytes(img, BROWSER_USER_AGENT)
-            val saved = bytes?.let { ctx.platform.saveImage(it, if (img.contains(".png")) "png" else "jpg") }
-            if (saved != null) { imageFile = saved; ocrFile(saved) } else if (imageUrl.isBlank()) imageUrl = img
+            val saved = downloadCover(candidates, post.snapshot) { b, ext -> ctx.platform.saveImage(b, ext) }
+            if (saved != null) {
+                imageFile = saved.file
+                if (saved.url.isNotBlank()) imageUrl = saved.url
+                ocrFile(saved.file)
+            } else if (imageUrl.isBlank()) candidates.firstOrNull()?.let { imageUrl = it }
+            secondSlide(post)?.let { second ->
+                val b = runCatching { httpBytes(second, BROWSER_USER_AGENT) }.getOrNull()
+                b?.let { ctx.platform.saveImage(it, imageExt(second, it)) }?.let { f -> if (f !in photos) photos = photos + f }
+            }
         }
     }
 
@@ -261,7 +276,7 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
         if (route.prefillUrl.isNotBlank()) {
             readStep = S.stepLink.of(lang)
             val post = runCatching { readPost(route.prefillUrl, ytKey) }.getOrNull()
-            if (post != null) ingest(post)
+            ingest(post ?: SocialPost(route.prefillUrl, platformOf(route.prefillUrl)))
             if (imageFile.isBlank() && imageUrl.isBlank()) youtubeThumb(route.prefillUrl)?.let { imageUrl = it }
             val p = platformOf(route.prefillUrl)
             if ((p == SourcePlatform.INSTAGRAM || p == SourcePlatform.FACEBOOK) && post?.caption.isNullOrBlank() && route.prefillCaption.length < 40) {
@@ -309,9 +324,9 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
             ctx.platform.toast(S.fixErrors.of(lang))
             return
         }
-        val autoTitle = title.trim().ifBlank {
-            type.tr().of(lang) + if (locality.isNotBlank()) " – " + locality.trim() else ""
-        }
+        val autoTitle = title.trim().takeUnless { isPlaceholderTitle(it) }
+            ?: smartTitle(caption, lang)
+            ?: (type.tr().of(lang) + if (locality.isNotBlank()) ", " + locality.trim() else "")
         val newBrokerId: String? = if (brokerId == null && newBrokerPhone.isNotBlank() && createBroker) {
             val b = Broker(
                 id = newId(), name = newBrokerName.trim().ifBlank { S.brokerDefaultName.of(lang) + " " + newBrokerPhone.takeLast(4) },
@@ -342,6 +357,7 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
             status = status,
             imageFile = imageFile,
             imageUrl = imageUrl,
+            photos = photos,
             folderIds = folderIds,
             notes = notes.trim(),
             reviews = reviews,
