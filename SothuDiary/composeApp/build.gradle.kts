@@ -66,8 +66,8 @@ android {
         applicationId = "com.hark.sothudiary"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.0.1"
         // Phones are ARM; dropping x86 keeps ML Kit's native OCR libraries out of the APK for emulators only.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -76,8 +76,21 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    signingConfigs {
+        // Fixed key committed to the repo so every build (CI or local) can update the installed app in place.
+        create("sothu") {
+            storeFile = file("sothu-release.jks")
+            storePassword = "sothudiary"
+            keyAlias = "sothu"
+            keyPassword = "sothudiary"
+        }
+    }
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("sothu")
+        }
         getByName("release") {
+            signingConfig = signingConfigs.getByName("sothu")
             isMinifyEnabled = false
         }
     }
