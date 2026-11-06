@@ -1,0 +1,42 @@
+name: Sothu Diary APK
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'SothuDiary/**'
+      - '.github/workflows/sothu-diary.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: SothuDiary
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build debug APK
+        run: chmod +x gradlew && ./gradlew :composeApp:assembleDebug --stacktrace
+      - name: Compile desktop target (informational)
+        continue-on-error: true
+        run: ./gradlew :composeApp:compileKotlinDesktop
+      - run: cp composeApp/build/outputs/apk/debug/composeApp-debug.apk SothuDiary.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SothuDiary-debug-apk
+          path: SothuDiary/SothuDiary.apk
+      - name: Publish to the "sothu-diary-latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sothu-diary-latest
+          name: Sothu Diary (latest build)
+          body: Debug APK of Sothu Diary (சொத்து டைரி) built from ${{ github.sha }}. Install on Android (allow installs from unknown sources).
+          prerelease: false
+          make_latest: false
+          files: SothuDiary/SothuDiary.apk

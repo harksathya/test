@@ -1,0 +1,225 @@
+package com.hark.sothudiary
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.HomeWork
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.hark.sothudiary.data.JsonRepository
+import com.hark.sothudiary.data.Lang
+import com.hark.sothudiary.data.nowMillis
+import com.hark.sothudiary.domain.daysUntil
+import com.hark.sothudiary.domain.extractUrl
+import com.hark.sothudiary.i18n.LocalLang
+import com.hark.sothudiary.i18n.S
+import com.hark.sothudiary.i18n.Tr
+import com.hark.sothudiary.i18n.s
+import com.hark.sothudiary.ui.AppContext
+import com.hark.sothudiary.ui.FilterState
+import com.hark.sothudiary.ui.Nav
+import com.hark.sothudiary.ui.Route
+import com.hark.sothudiary.ui.Tab
+import com.hark.sothudiary.ui.components.EmptyState
+import com.hark.sothudiary.ui.screens.BrokerDetailScreen
+import com.hark.sothudiary.ui.screens.BrokerEditScreen
+import com.hark.sothudiary.ui.screens.BrokerListScreen
+import com.hark.sothudiary.ui.screens.FollowUpsScreen
+import com.hark.sothudiary.ui.screens.GuidelinesScreen
+import com.hark.sothudiary.ui.screens.InteractionEditScreen
+import com.hark.sothudiary.ui.screens.PropertyDetailScreen
+import com.hark.sothudiary.ui.screens.PropertyEditScreen
+import com.hark.sothudiary.ui.screens.PropertyListScreen
+import com.hark.sothudiary.ui.screens.SettingsScreen
+import com.hark.sothudiary.ui.theme.SothuTheme
+
+private fun Tab.icon(): ImageVector = when (this) {
+    Tab.PROPERTIES -> Icons.Filled.HomeWork
+    Tab.BROKERS -> Icons.Filled.Groups
+    Tab.FOLLOWUPS -> Icons.Filled.Event
+    Tab.GUIDELINES -> Icons.Filled.Gavel
+    Tab.SETTINGS -> Icons.Filled.Settings
+}
+
+private fun Tab.label(): Tr = when (this) {
+    Tab.PROPERTIES -> S.tabProperties
+    Tab.BROKERS -> S.tabBrokers
+    Tab.FOLLOWUPS -> S.tabFollowUps
+    Tab.GUIDELINES -> S.tabGuidelines
+    Tab.SETTINGS -> S.tabSettings
+}
+
+/**
+ * Root of the shared UI.
+ * @param sharedText text shared into the app (Android ACTION_SEND); opens "New property" prefilled.
+ */
+@Composable
+fun App(
+    repo: JsonRepository,
+    platform: PlatformActions,
+    sharedText: String? = null,
+    onSharedConsumed: () -> Unit = {},
+) {
+    val nav = remember { Nav() }
+    val filters = remember { FilterState() }
+    val lang = repo.data.settings.lang
+
+    LaunchedEffect(sharedText) {
+        val text = sharedText
+        if (!text.isNullOrBlank()) {
+            val url = extractUrl(text) ?: ""
+            val caption = (if (url.isNotEmpty()) text.replace(url, "") else text).trim()
+            nav.switchTab(Tab.PROPERTIES)
+            nav.select(Route.PropertyEdit(id = null, prefillUrl = url, prefillCaption = caption))
+            onSharedConsumed()
+        }
+    }
+
+    CompositionLocalProvider(LocalLang provides lang) {
+        SothuTheme {
+            PlatformBackHandler(enabled = nav.stack.isNotEmpty() || nav.tab != Tab.PROPERTIES) {
+                if (nav.stack.isNotEmpty()) nav.pop() else nav.switchTab(Tab.PROPERTIES)
+            }
+            BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                val wide = maxWidth >= 600.dp
+                val ctx = AppContext(
+                    repo = repo,
+                    nav = nav,
+                    platform = platform,
+                    filters = filters,
+                    toggleLang = { repo.setLang(if (repo.data.settings.lang == Lang.EN) Lang.TA else Lang.EN) },
+                    wide = wide,
+                )
+                if (wide) WideLayout(ctx) else PhoneLayout(ctx)
+            }
+        }
+    }
+}
+
+private fun overdueCount(ctx: AppContext): Int {
+    val now = nowMillis()
+    return ctx.repo.data.interactions.count { i ->
+        val fu = i.followUpAt
+        !i.followUpDone && fu != null && daysUntil(fu, now) <= 0
+    }
+}
+
+@Composable
+private fun TabIcon(ctx: AppContext, t: Tab) {
+    val n = if (t == Tab.FOLLOWUPS) overdueCount(ctx) else 0
+    if (n > 0) {
+        BadgedBox(badge = { Badge { Text(n.toString()) } }) { Icon(t.icon(), contentDescription = null) }
+    } else {
+        Icon(t.icon(), contentDescription = null)
+    }
+}
+
+@Composable
+private fun PhoneLayout(ctx: AppContext) {
+    val top = ctx.nav.top
+    if (top != null) {
+        RouteScreen(ctx, top)
+        return
+    }
+    Scaffold(
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                Tab.entries.forEach { t ->
+                    NavigationBarItem(
+                        selected = ctx.nav.tab == t,
+                        onClick = { ctx.nav.switchTab(t) },
+                        icon = { TabIcon(ctx, t) },
+                        label = { Text(t.label().s(), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) },
+                    )
+                }
+            }
+        },
+    ) { padding ->
+        Box(Modifier.padding(padding)) { TabScreen(ctx, selectedId = null) }
+    }
+}
+
+@Composable
+private fun WideLayout(ctx: AppContext) {
+    Row(Modifier.fillMaxSize()) {
+        NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
+            Spacer(Modifier.height(12.dp))
+            Tab.entries.forEach { t ->
+                NavigationRailItem(
+                    selected = ctx.nav.tab == t,
+                    onClick = { ctx.nav.switchTab(t) },
+                    icon = { TabIcon(ctx, t) },
+                    label = { Text(t.label().s(), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) },
+                )
+            }
+        }
+        VerticalDivider()
+        val top = ctx.nav.top
+        val selectedId = when (top) {
+            is Route.PropertyDetail -> top.id
+            is Route.BrokerDetail -> top.id
+            else -> null
+        }
+        Box(Modifier.weight(0.42f).fillMaxHeight()) { TabScreen(ctx, selectedId) }
+        VerticalDivider()
+        Box(Modifier.weight(0.58f).fillMaxHeight()) {
+            if (top != null) {
+                RouteScreen(ctx, top)
+            } else {
+                EmptyState(Icons.Filled.TouchApp, S.selectSomething.s(), S.selectSomethingBody.s())
+            }
+        }
+    }
+}
+
+@Composable
+private fun TabScreen(ctx: AppContext, selectedId: String?) {
+    when (ctx.nav.tab) {
+        Tab.PROPERTIES -> PropertyListScreen(ctx, selectedId)
+        Tab.BROKERS -> BrokerListScreen(ctx, selectedId)
+        Tab.FOLLOWUPS -> FollowUpsScreen(ctx)
+        Tab.GUIDELINES -> GuidelinesScreen(ctx)
+        Tab.SETTINGS -> SettingsScreen(ctx)
+    }
+}
+
+@Composable
+private fun RouteScreen(ctx: AppContext, r: Route) {
+    when (r) {
+        is Route.PropertyDetail -> PropertyDetailScreen(ctx, r.id)
+        is Route.PropertyEdit -> PropertyEditScreen(ctx, r)
+        is Route.BrokerDetail -> BrokerDetailScreen(ctx, r.id)
+        is Route.BrokerEdit -> BrokerEditScreen(ctx, r)
+        is Route.InteractionEdit -> InteractionEditScreen(ctx, r)
+    }
+}
