@@ -41,7 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.hark.sothudiary.data.market.MarketData
+import com.hark.sothudiary.domain.pricing.isFresh
 import com.hark.sothudiary.domain.DEFAULT_MAP_CENTER
 import com.hark.sothudiary.domain.group
 import com.hark.sothudiary.domain.priceShort
@@ -56,6 +56,7 @@ import com.hark.sothudiary.i18n.shortTr
 import com.hark.sothudiary.i18n.tr
 import com.hark.sothudiary.ui.AppContext
 import com.hark.sothudiary.ui.Route
+import com.hark.sothudiary.ui.Tab
 import com.hark.sothudiary.ui.components.AppTopBar
 import com.hark.sothudiary.ui.components.Pill
 import com.hark.sothudiary.ui.components.PropertyImage
@@ -67,7 +68,7 @@ import com.hark.sothudiary.ui.map.MapPin
 import com.hark.sothudiary.ui.theme.verdictArgb
 import com.hark.sothudiary.ui.theme.verdictColor
 
-/** All properties as pins coloured by price verdict; optional market-data localities. */
+/** All properties as pins coloured by price verdict; optional live-lookup rate places. */
 @Composable
 fun MapScreen(ctx: AppContext) {
     val data = ctx.repo.data
@@ -81,9 +82,10 @@ fun MapScreen(ctx: AppContext) {
     val noPin = data.properties.count { it.lat == null || it.lng == null }
     val pins = buildList {
         if (showMarket) {
-            MarketData.dataset.localities.forEach { l ->
-                val la = l.lat; val ln = l.lng
-                if (la != null && ln != null) add(MapPin("loc:" + l.name, la, ln, l.name, color = 0xFF78909C, small = true))
+            // Rates from live lookups (cache, last 30 days) – no bundled data.
+            data.onlineRates.filter { isFresh(it.fetchedAt) && (groupFilter == null || it.group == groupFilter) }.forEach { r ->
+                val la = r.lat; val ln = r.lng
+                if (la != null && ln != null) add(MapPin("loc:" + r.place, la, ln, r.place, color = 0xFF78909C, small = true))
             }
         }
         withPins.forEach { p ->
@@ -99,7 +101,7 @@ fun MapScreen(ctx: AppContext) {
             GeoMap(
                 modifier = Modifier.fillMaxSize(),
                 pins = pins,
-                centerLat = DEFAULT_MAP_CENTER.lat, centerLng = DEFAULT_MAP_CENTER.lng, zoom = 11.5,
+                centerLat = DEFAULT_MAP_CENTER.lat, centerLng = DEFAULT_MAP_CENTER.lng, zoom = if (withPins.isEmpty()) 6.5 else 11.5,
                 cameraKey = withPins.map { it.id } + groupFilter,
                 fitPins = withPins.isNotEmpty(),
                 onPinClick = { id -> selected = id },
@@ -140,7 +142,7 @@ fun MapScreen(ctx: AppContext) {
                         Icon(Icons.Filled.QueryStats, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
                         Text(name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { ctx.nav.select(Route.AreaRates(name, null)) }) { Text(S.seeAreaRates.s()) }
+                        TextButton(onClick = { ctx.nav.switchTab(Tab.AREA_RATES) }) { Text(S.seeAreaRates.s()) }
                         IconButton(onClick = { selected = null }) { Icon(Icons.Filled.Close, contentDescription = S.cancel.s()) }
                     }
                 }

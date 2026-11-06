@@ -1,5 +1,7 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.ui.components.GeminiSetupCard
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -118,6 +120,10 @@ fun HomeScreen(ctx: AppContext) {
                 QuickAction(Icons.Filled.PhoneInTalk, S.logInteraction.s(), MaterialTheme.colorScheme.secondary) { ctx.nav.select(Route.InteractionEdit(null, null, null)) }
                 QuickAction(Icons.Filled.QueryStats, S.tabAreaRates.s(), Color(0xFF7C4DFF)) { ctx.nav.switchTab(Tab.AREA_RATES) }
                 QuickAction(Icons.Filled.Map, S.tabMap.s(), Color(0xFFEF6C00)) { ctx.nav.switchTab(Tab.MAP) }
+            }
+
+            if (data.settings.geminiApiKey.isBlank() && !data.settings.keyCardDismissed) {
+                GeminiSetupCard(ctx, onDismiss = { ctx.repo.dismissKeyCard() })
             }
 
             if (data.properties.isEmpty()) {

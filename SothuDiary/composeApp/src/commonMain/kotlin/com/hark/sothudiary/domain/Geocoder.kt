@@ -41,11 +41,23 @@ object Geocoder {
         httpGet(url, APP_USER_AGENT)
     }
 
-    /** Searches places in India, e.g. "Jaihindpuram Madurai". Returns an empty list on errors. */
-    suspend fun search(query: String, limit: Int = 8): List<GeoPlace> {
+    /**
+     * Searches places in India (villages included), e.g. "Panpoli Tenkasi" or "பண்பொழி".
+     * Results near [nearLat]/[nearLng] are preferred (viewbox bias, not a bound) and Tamil Nadu results come first.
+     * When nothing is found, the query is retried with ", Tamil Nadu". Returns an empty list on errors.
+     */
+    suspend fun search(query: String, limit: Int = 10, nearLat: Double? = null, nearLng: Double? = null): List<GeoPlace> {
         val q = query.trim()
         if (q.length < 3) return emptyList()
-        val url = "$BASE/search?format=json&addressdetails=1&countrycodes=in&accept-language=en&limit=$limit&q=" + urlEncode(q)
+        var r = searchOnce(q, limit, nearLat, nearLng)
+        if (r.isEmpty() && !q.contains("tamil", ignoreCase = true)) r = searchOnce("$q, Tamil Nadu", limit, nearLat, nearLng)
+        return r.sortedBy { if (it.state.contains("Tamil", ignoreCase = true)) 0 else 1 }
+    }
+
+    private suspend fun searchOnce(q: String, limit: Int, nearLat: Double?, nearLng: Double?): List<GeoPlace> {
+        val box = if (nearLat != null && nearLng != null)
+            "&viewbox=${nearLng - 0.6},${nearLat + 0.6},${nearLng + 0.6},${nearLat - 0.6}&bounded=0" else ""
+        val url = "$BASE/search?format=json&addressdetails=1&countrycodes=in&accept-language=en&limit=$limit$box&q=" + urlEncode(q)
         val body = get(url) ?: return emptyList()
         val arr = runCatching { json.parseToJsonElement(body) as? JsonArray }.getOrNull() ?: return emptyList()
         return arr.mapNotNull { (it as? JsonObject)?.let(::toPlace) }
@@ -98,4 +110,5 @@ fun urlEncode(s: String): String {
 }
 
 /** Madurai city centre: only used to centre an empty map, never saved as a property location. */
-val DEFAULT_MAP_CENTER = com.hark.sothudiary.LatLng(9.9252, 78.1198)
+/** Centre of Tamil Nadu – only a starting view; the app is not tied to any place. */
+val DEFAULT_MAP_CENTER = com.hark.sothudiary.LatLng(11.0, 78.4)

@@ -43,6 +43,12 @@ interface PlatformActions {
 
     /** (Re)schedules or cancels the daily 9 AM follow-up reminder. Asks for notification permission when needed. */
     fun setReminders(enabled: Boolean)
+
+    /** Saves downloaded image bytes (e.g. a post thumbnail) into app storage. Returns the stored file name. */
+    fun saveImage(bytes: ByteArray, ext: String = "jpg"): String? = null
+
+    /** True where the in-app browser ("Read post" with login) is available (Android WebView). */
+    val hasWebReader: Boolean get() = false
 }
 
 /** Content shared into the app from another app (text and / or images already copied into app storage). */
@@ -115,7 +121,28 @@ expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
 /** Simple HTTP GET returning the body, or null on any error. Runs off the main thread. */
 expect suspend fun httpGet(url: String, userAgent: String): String?
 
-const val APP_USER_AGENT = "SothuDiary/2.0 (com.hark.sothudiary; personal property diary app)"
+/** Result of [httpRequest]: status code, body (also for errors), the redirect target and the final URL after redirects. */
+data class HttpResult(val code: Int, val body: String?, val location: String?, val finalUrl: String) {
+    val ok: Boolean get() = code in 200..299
+}
+
+/**
+ * General HTTP request (GET / POST with headers). Follows redirects across hosts when [followRedirects]
+ * (GET only), otherwise returns the 3xx with its [HttpResult.location]. Null on network errors.
+ */
+expect suspend fun httpRequest(
+    url: String,
+    method: String = "GET",
+    headers: Map<String, String> = emptyMap(),
+    body: String? = null,
+    followRedirects: Boolean = true,
+    timeoutMs: Int = 20_000,
+): HttpResult?
+
+/** Downloads a file (e.g. a post thumbnail). Null on errors. */
+expect suspend fun httpBytes(url: String, userAgent: String, maxBytes: Int = 8_000_000): ByteArray?
+
+const val APP_USER_AGENT = "SothuDiary/2.1 (com.hark.sothudiary; personal property diary app)"
 
 // Speech-to-text error codes passed to AudioActions.startSpeech(onError).
 const val SPEECH_PERMISSION = "permission"

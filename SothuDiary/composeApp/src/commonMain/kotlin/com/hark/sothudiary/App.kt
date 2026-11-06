@@ -153,6 +153,7 @@ fun App(
                     wide = wide,
                 )
                 if (wide) WideLayout(ctx) else PhoneLayout(ctx)
+                com.hark.sothudiary.ui.OverlayHost()
             }
         }
     }
@@ -274,6 +275,6 @@ private fun RouteScreen(ctx: AppContext, r: Route) {
         is Route.BrokerEdit -> BrokerEditScreen(ctx, r)
         is Route.InteractionEdit -> InteractionEditScreen(ctx, r)
         is Route.FolderView -> FolderViewScreen(ctx, r)
-        is Route.AreaRates -> AreaRatesScreen(ctx, r.locality, r.group, onBack = { ctx.nav.pop() })
+        is Route.AreaRates -> AreaRatesScreen(ctx, r.propertyId, r.group, onBack = { ctx.nav.pop() })
     }
 }

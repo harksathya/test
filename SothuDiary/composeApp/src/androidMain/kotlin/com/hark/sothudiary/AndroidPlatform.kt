@@ -121,6 +121,10 @@ class AndroidPlatform(
 
     override fun recognizeText(fileName: String, onResult: (String?) -> Unit) = AndroidImages.recognize(context, fileName, onResult)
 
+    override fun saveImage(bytes: ByteArray, ext: String): String? = AndroidImages.saveBytes(context, bytes, ext)
+
+    override val hasWebReader: Boolean get() = true
+
     override fun setReminders(enabled: Boolean) {
         Reminders.schedule(context, enabled)
         if (enabled && Build.VERSION.SDK_INT >= 33 &&

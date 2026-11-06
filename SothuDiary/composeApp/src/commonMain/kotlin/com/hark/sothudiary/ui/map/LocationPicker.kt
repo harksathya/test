@@ -52,8 +52,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.zIndex
+import com.hark.sothudiary.ui.FullScreenOverlay
 import com.hark.sothudiary.PlatformActions
 import com.hark.sothudiary.domain.DEFAULT_MAP_CENTER
 import com.hark.sothudiary.domain.GeoPlace
@@ -62,6 +63,7 @@ import com.hark.sothudiary.domain.dec
 import com.hark.sothudiary.domain.parseDouble
 import com.hark.sothudiary.i18n.S
 import com.hark.sothudiary.i18n.s
+import com.hark.sothudiary.i18n.f
 import com.hark.sothudiary.ui.theme.LocalBrand
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -90,7 +92,10 @@ fun LocationPickerDialog(
     onDismiss: () -> Unit,
     onPicked: (PickedLocation) -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
+    // Drawn in the activity window (not a Dialog window): the search field always stays on top of the
+    // map view and the layout resizes for the keyboard.
+    FullScreenOverlay {
+        com.hark.sothudiary.PlatformBackHandler(enabled = true) { onDismiss() }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             LocationPickerContent(platform, initial, initialQuery, onDismiss, onPicked)
         }
@@ -129,7 +134,7 @@ private fun LocationPickerContent(
         if (q.length < 3 || !showResults) return@LaunchedEffect
         delay(700)
         searching = true
-        val r = Geocoder.search(q)
+        val r = Geocoder.search(q, nearLat = picked?.lat ?: DEFAULT_MAP_CENTER.lat, nearLng = picked?.lng ?: DEFAULT_MAP_CENTER.lng)
         searching = false
         searchedFor = q
         results = r
@@ -169,8 +174,8 @@ private fun LocationPickerContent(
                 Text(S.useThisLocation.s(), color = LocalBrand.current.onBar.copy(alpha = if (picked != null) 1f else 0.5f), fontWeight = FontWeight.Bold)
             }
         }
-        // Search
-        Column(Modifier.background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 8.dp)) {
+        // Search – always above the map (own z-layer, solid background); results open below it, pushing the map down.
+        Column(Modifier.zIndex(2f).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 8.dp)) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it; showResults = true; message = null },
@@ -187,7 +192,7 @@ private fun LocationPickerContent(
                 keyboardActions = KeyboardActions(onSearch = {
                     scope.launch {
                         searching = true
-                        results = Geocoder.search(query)
+                        results = Geocoder.search(query, nearLat = picked?.lat, nearLng = picked?.lng)
                         searching = false
                         showResults = true
                         message = if (results.isEmpty()) msgNoResults else null
@@ -242,9 +247,47 @@ private fun LocationPickerContent(
             message?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
             }
+            if (showResults && (results.isNotEmpty() || searching)) {
+                Surface(
+                    Modifier.fillMaxWidth().padding(top = 6.dp).heightIn(max = 300.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    shadowElevation = 4.dp,
+                    tonalElevation = 2.dp,
+                    color = MaterialTheme.colorScheme.surface,
+                ) {
+                    Column {
+                        Text(
+                            if (searching && results.isEmpty()) S.searching.s() else S.searchResults.f(results.size),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                        LazyColumn {
+                            items(results) { r ->
+                                Row(
+                                    Modifier.fillMaxWidth().clickable {
+                                        showResults = false
+                                        query = r.locality.ifBlank { r.displayName.substringBefore(',') }
+                                        movePin(r.lat, r.lng, recenter = true, known = r)
+                                    }.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text(r.displayName.substringBefore(','), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(r.displayName, style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                }
+            }
         }
         HorizontalDivider()
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
             val p = picked
             val center = p?.let { it.lat to it.lng } ?: (DEFAULT_MAP_CENTER.lat to DEFAULT_MAP_CENTER.lng)
             GeoMap(
@@ -252,42 +295,12 @@ private fun LocationPickerContent(
                 pins = if (p != null) listOf(MapPin("picked", p.lat, p.lng, p.locality.ifBlank { S.selectedPoint.s() }, color = 0xFFD32F2F, draggable = true)) else emptyList(),
                 centerLat = center.first,
                 centerLng = center.second,
-                zoom = if (p != null) 16.0 else 12.0,
+                zoom = if (p != null) 16.0 else 7.0,
                 cameraKey = cameraKey,
                 onTap = { lat, lng -> showResults = false; movePin(lat, lng, recenter = false) },
                 onPinDragged = { _, lat, lng -> movePin(lat, lng, recenter = false) },
             )
-            if (showResults && (results.isNotEmpty() || searching)) {
-                Surface(
-                    Modifier.fillMaxWidth().padding(8.dp).heightIn(max = 320.dp),
-                    shape = MaterialTheme.shapes.medium,
-                    shadowElevation = 6.dp,
-                    color = MaterialTheme.colorScheme.surface,
-                ) {
-                    LazyColumn {
-                        items(results) { r ->
-                            Row(
-                                Modifier.fillMaxWidth().clickable {
-                                    showResults = false
-                                    query = r.locality.ifBlank { r.displayName.substringBefore(',') }
-                                    movePin(r.lat, r.lng, recenter = true, known = r)
-                                }.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(10.dp))
-                                Column {
-                                    Text(r.displayName.substringBefore(','), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(r.displayName.substringAfter(',', "").trim(), style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                }
-                            }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        }
-                    }
-                }
-            }
-            if (p == null && !(showResults && results.isNotEmpty())) {
+            if (p == null) {
                 Surface(
                     Modifier.align(Alignment.TopCenter).padding(12.dp),
                     shape = MaterialTheme.shapes.medium,

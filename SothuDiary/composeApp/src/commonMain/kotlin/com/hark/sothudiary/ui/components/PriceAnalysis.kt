@@ -1,5 +1,12 @@
 package com.hark.sothudiary.ui.components
 
+import androidx.compose.material.icons.filled.TravelExplore
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import com.hark.sothudiary.domain.pricing.PriceRules
+import com.hark.sothudiary.i18n.groupTr
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -121,19 +128,25 @@ fun reasoningLines(est: MarketEstimate, check: PriceCheck?): List<String> {
     } else if (med != null) {
         lines += S.rsTypical.f(rateText(med, b, lang), rangeText(est.fairLow, est.fairHigh, b, lang), n)
     }
-    val nearestMarket = est.comparables.firstOrNull { it.source == CompSource.MARKET || it.source == CompSource.MARKET_FALLBACK }
+    if (est.insufficient) {
+        lines += if (est.hasPin) S.rsInsufficient.f(groupTr(est.group).s(), dec(PriceRules.MAX_KM, 0)) else S.rsNoPin.s()
+    }
+    if (est.widened) lines += S.rsWidened.f(dec(est.baseRadiusKm, 0), dec(est.radiusKm ?: PriceRules.MAX_KM, 0))
+    val otherD = est.comparables.filter { it.otherDistrict }.map { it.district }.filter { it.isNotBlank() }.distinct()
+    if (otherD.isNotEmpty()) lines += S.rsOtherDistrict.f(otherD.joinToString(", "))
+    val nearestMarket = est.comparables.firstOrNull { it.source == CompSource.MARKET || it.source == CompSource.ONLINE }
     if (nearestMarket != null) {
         val where = nearestMarket.distanceKm?.let { S.kmAway.f(dec(it, 1)) } ?: S.nameMatch.s()
         lines += S.rsNearestMarket.f(
             nearestMarket.displayName(lang), where, rangeText(nearestMarket.min ?: nearestMarket.rate, nearestMarket.max ?: nearestMarket.rate, b, lang),
             listOf(nearestMarket.sourceName, nearestMarket.asOf).filter { it.isNotBlank() }.joinToString(", "),
         )
-        if ((nearestMarket.distanceKm ?: 0.0) > 15.0) lines += S.rsFar.f(dec(nearestMarket.distanceKm ?: 0.0, 0))
     }
-    if (est.comparables.any { it.source == CompSource.CITY_AVERAGE }) lines += S.rsCityAverage.s()
-    if (est.comparables.any { it.source == CompSource.MARKET_FALLBACK }) lines += S.rsFallbackType.s()
+    val online = est.comparables.count { it.source == CompSource.ONLINE }
+    if (online > 0) lines += S.rsOnline.f(online)
+    lines += S.rsSameType.f(groupTr(est.group).s())
     val own = est.comparables.count { it.source == CompSource.YOUR_LISTING }
-    lines += if (own > 0) S.rsOwn.f(own, est.radiusKm?.let { dec(it, 0) } ?: "-") else S.rsNoOwn.s()
+    if (own > 0) lines += S.rsOwn.f(own, est.radiusKm?.let { dec(it, 0) } ?: "-")
     val g = est.guideline
     if (g != null) {
         val gText = rateText(g.value, b, lang)
@@ -236,7 +249,7 @@ fun ComparableRow(c: Comparable, basis: PriceBasis, onOpenProperty: (String) -> 
     val lang = LocalLang.current
     val color = when (c.source) {
         CompSource.YOUR_LISTING -> MaterialTheme.colorScheme.primary
-        CompSource.MARKET -> MaterialTheme.colorScheme.secondary
+        CompSource.MARKET, CompSource.ONLINE -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val click: (() -> Unit)? = when {
@@ -263,6 +276,7 @@ fun ComparableRow(c: Comparable, basis: PriceBasis, onOpenProperty: (String) -> 
                 Text("• " + rangeText(c.min, c.max, basis, lang), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (c.lowConfidence) Pill(S.lowConfidenceTag.s(), Color(0xFFEF8F00))
+            if (c.otherDistrict && c.district.isNotBlank()) Pill(S.otherDistrictTag.f(c.district), Color(0xFF8E24AA))
         }
         val src = listOf(c.sourceName, c.asOf.let { if (it.isNotBlank()) S.asOf.f(it) else "" }).filter { it.isNotBlank() }.joinToString(" • ")
         if (src.isNotBlank()) {
@@ -317,6 +331,12 @@ fun PriceCheckCard(
     onOpenProperty: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onAreaRates: () -> Unit,
+    onFindOnline: (() -> Unit)? = null,
+    findingOnline: Boolean = false,
+    onlineMessage: String? = null,
+    lookupStatus: String? = null,
+    needsKey: Boolean = false,
+    onSetupKey: (() -> Unit)? = null,
 ) {
     val lang = LocalLang.current
     val color = verdictColor(check.verdict)
@@ -335,6 +355,28 @@ fun PriceCheckCard(
             }
         }
         Spacer(Modifier.height(10.dp))
+        if (est.insufficient || est.widened) {
+            Column(
+                Modifier.fillMaxWidth().background(Color(0xFFEF8F00).copy(alpha = 0.10f), RoundedCornerShape(12.dp)).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    if (est.insufficient) S.notEnoughNearby.s() else S.widenedTitle.f(dec(est.radiusKm ?: PriceRules.MAX_KM, 0)),
+                    fontWeight = FontWeight.Bold, color = Color(0xFFB26A00),
+                )
+                Text(
+                    if (est.insufficient) (if (est.hasPin) S.notEnoughNearbyBody.f(groupTr(est.group).s(), dec(PriceRules.MAX_KM, 0)) else S.rsNoPin.s())
+                    else S.widenedBody.s(),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (needsKey && onSetupKey != null) {
+                    Text(S.needKeyForCheck.s(), style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = onSetupKey, modifier = Modifier.fillMaxWidth()) { Text(S.setUpLiveCheck.s()) }
+                } else if (onFindOnline != null) FindOnlineButton(onFindOnline, findingOnline, prominent = true)
+                if (onlineMessage != null) Text(onlineMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(Modifier.height(10.dp))
+        }
         val unit = check.unitPrice
         if (unit == null) {
             Text(S.explainNoPrice.s(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -394,6 +436,14 @@ fun PriceCheckCard(
                 Text("• " + formatDateShort(q.at, lang) + ": " + priceShort(q.price, lang), style = MaterialTheme.typography.bodySmall)
             }
         }
+        if (lookupStatus != null || (onFindOnline != null && !est.insufficient && !est.widened)) {
+            Spacer(Modifier.height(8.dp))
+            if (lookupStatus != null) Text(lookupStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (onFindOnline != null && !est.insufficient && !est.widened && !needsKey) {
+                FindOnlineButton(onFindOnline, findingOnline, prominent = false)
+                if (onlineMessage != null) Text(onlineMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Text(S.askingPricesNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row {
@@ -406,6 +456,18 @@ fun PriceCheckCard(
 }
 
 const val TN_REGINET = "https://tnreginet.gov.in/portal/"
+
+@Composable
+fun FindOnlineButton(onClick: () -> Unit, busy: Boolean, prominent: Boolean) {
+    val content: @Composable () -> Unit = {
+        if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        else Icon(Icons.Filled.TravelExplore, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(if (busy) S.findingOnline.s() else S.refreshLiveRates.s())
+    }
+    if (prominent) Button(onClick = onClick, enabled = !busy, modifier = Modifier.fillMaxWidth()) { content() }
+    else OutlinedButton(onClick = onClick, enabled = !busy, modifier = Modifier.fillMaxWidth()) { content() }
+}
 
 @Suppress("unused")
 private val keepConfidence = Confidence.LOW

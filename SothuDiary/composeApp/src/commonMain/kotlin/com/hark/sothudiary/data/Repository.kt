@@ -194,6 +194,37 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
 
     fun setOnboarded() = update { d -> d.copy(settings = d.settings.copy(onboarded = true)) }
 
+    fun setApiKeys(youtube: String, gemini: String, model: String) = update { d ->
+        d.copy(settings = d.settings.copy(youtubeApiKey = youtube.trim(), geminiApiKey = gemini.trim(), geminiModel = model.trim().ifBlank { "gemini-2.5-flash" }))
+    }
+
+    fun setReviews(propertyId: String, reviews: List<Review>) = update { d ->
+        d.copy(properties = d.properties.map {
+            if (it.id == propertyId) it.copy(reviews = reviews, reviewsFetchedAt = nowMillis()) else it
+        })
+    }
+
+    /** Saves rates found online; a rate for the same place / type / kind / source replaces the older one. */
+    fun addOnlineRates(rates: List<OnlineRate>) = update { d ->
+        fun key(r: OnlineRate) = listOf(r.place.lowercase().trim(), r.group, r.kind, r.sourceUrl.ifBlank { r.sourceName }.lowercase()).joinToString("|")
+        val newKeys = rates.map(::key).toSet()
+        d.copy(onlineRates = d.onlineRates.filterNot { key(it) in newKeys } + rates)
+    }
+
+    /** Stores a live lookup and its rates, replacing an earlier lookup with the same key. */
+    fun saveLookup(lookup: RateLookup, rates: List<OnlineRate>) = update { d ->
+        d.copy(
+            rateLookups = d.rateLookups.filterNot { it.key == lookup.key } + lookup,
+            onlineRates = d.onlineRates.filterNot { it.lookupKey == lookup.key } + rates,
+        )
+    }
+
+    fun clearLookups() = update { d -> d.copy(rateLookups = emptyList(), onlineRates = emptyList()) }
+
+    fun dismissKeyCard() = update { d -> d.copy(settings = d.settings.copy(keyCardDismissed = true)) }
+
+    fun deleteOnlineRate(id: String) = update { d -> d.copy(onlineRates = d.onlineRates.filterNot { it.id == id }) }
+
     fun exportJson(): String = json.encodeToString(AppData.serializer(), data)
 
     /** Replaces all data with the imported file. Returns false if the text is not a valid backup. */

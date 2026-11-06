@@ -70,7 +70,7 @@ fun Verdict.tr(): Tr = when (this) {
     Verdict.FAIR -> Tr("Fair", "நியாயமான விலை")
     Verdict.HIGH -> Tr("High", "அதிக விலை")
     Verdict.TOO_HIGH -> Tr("Too high", "மிக அதிக விலை")
-    Verdict.UNKNOWN -> Tr("Not enough data", "போதுமான தகவல் இல்லை")
+    Verdict.UNKNOWN -> Tr("Not enough data within 10 km", "10 கி.மீ.க்குள் போதுமான தகவல் இல்லை")
 }
 
 /** Short version for badges on cards. */
@@ -112,6 +112,22 @@ fun CompSource.tr(): Tr = when (this) {
     CompSource.MARKET -> Tr("Market data", "சந்தை தகவல்")
     CompSource.MARKET_FALLBACK -> Tr("Area average (mixed types)", "பகுதி சராசரி (கலப்பு வகை)")
     CompSource.CITY_AVERAGE -> Tr("City-wide average", "நகர சராசரி")
+    CompSource.ONLINE -> Tr("Live web lookup", "நேரடி இணையத் தேடல்")
+}
+
+fun com.hark.sothudiary.domain.PostClaim.tr(): Tr = when (this) {
+    com.hark.sothudiary.domain.PostClaim.DTCP -> Tr("DTCP / approved", "DTCP / அனுமதி பெற்றது")
+    com.hark.sothudiary.domain.PostClaim.RERA -> Tr("RERA", "RERA பதிவு")
+    com.hark.sothudiary.domain.PostClaim.PATTA -> Tr("Patta", "பட்டா")
+    com.hark.sothudiary.domain.PostClaim.ROAD -> Tr("Road access", "சாலை வசதி")
+    com.hark.sothudiary.domain.PostClaim.CORNER -> Tr("Corner plot", "மூலை மனை")
+    com.hark.sothudiary.domain.PostClaim.EB -> Tr("Electricity (EB)", "மின்சார வசதி")
+    com.hark.sothudiary.domain.PostClaim.WATER -> Tr("Water / well", "தண்ணீர் / கிணறு")
+    com.hark.sothudiary.domain.PostClaim.GATED -> Tr("Gated", "பாதுகாப்பு வளாகம்")
+    com.hark.sothudiary.domain.PostClaim.LOAN -> Tr("Loan / EMI", "வங்கிக் கடன் வசதி")
+    com.hark.sothudiary.domain.PostClaim.NEGOTIABLE -> Tr("Negotiable", "பேரம் பேசலாம்")
+    com.hark.sothudiary.domain.PostClaim.FENCED -> Tr("Fenced", "வேலி உள்ளது")
+    com.hark.sothudiary.domain.PostClaim.RESIDENTIAL_AREA -> Tr("Houses around", "சுற்றிலும் வீடுகள்")
 }
 
 fun ThemeMode.tr(): Tr = when (this) {

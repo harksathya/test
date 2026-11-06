@@ -4,6 +4,8 @@ import com.hark.sothudiary.data.AppData
 import com.hark.sothudiary.data.DealStatus
 import com.hark.sothudiary.data.DocItem
 import com.hark.sothudiary.data.GuidelineValue
+import com.hark.sothudiary.data.OnlineRate
+import com.hark.sothudiary.data.RateKind
 import com.hark.sothudiary.data.Property
 import com.hark.sothudiary.data.PropertyType
 import com.hark.sothudiary.domain.PriceBasis
@@ -15,13 +17,6 @@ import com.hark.sothudiary.domain.unitPrice
 import com.hark.sothudiary.domain.convertRate
 import com.hark.sothudiary.domain.groupBasis
 import com.hark.sothudiary.domain.rateUnit
-import com.hark.sothudiary.data.market.MarketData
-import com.hark.sothudiary.data.market.MarketDataset
-import com.hark.sothudiary.data.market.MarketLocality
-import com.hark.sothudiary.data.market.MarketRates
-import com.hark.sothudiary.data.market.RateRange
-import com.hark.sothudiary.data.market.TypeRate
-import com.hark.sothudiary.data.market.rangeIn
 
 enum class Verdict { SUSPICIOUS_LOW, GOOD, FAIR, HIGH, TOO_HIGH, UNKNOWN }
 
@@ -30,12 +25,14 @@ data class Quote(val at: Long, val price: Long)
 enum class CompSource {
     /** One of the user's own listings of the same type group. */
     YOUR_LISTING,
-    /** Bundled market data for a nearby / matching locality, same type. */
+    /** Not produced since v2.1 (no bundled dataset); kept so older code paths compile. */
     MARKET,
-    /** Bundled market data of a related type (e.g. the locality's overall average) – low weight. */
+    /** Not produced since v2.1 (types are never mixed); kept so older code paths compile. */
     MARKET_FALLBACK,
-    /** No nearby data: average of all localities in the dataset for this type. */
+    /** Not produced since v2.1 (no city-wide averages). */
     CITY_AVERAGE,
+    /** A rate from the live lookup (Gemini + Google Search), cached in the app. */
+    ONLINE,
 }
 
 enum class Confidence { HIGH, MEDIUM, LOW }
@@ -57,6 +54,9 @@ data class Comparable(
     val lat: Double? = null,
     val lng: Double? = null,
     val matchedByName: Boolean = false,
+    val district: String = "",
+    /** In a different district than the property (only ever used when it is inside the distance limit). */
+    val otherDistrict: Boolean = false,
 )
 
 /** Where a guideline value came from. */
@@ -69,19 +69,28 @@ data class GuidelineInfo(
     val sourceName: String = "",
     val sourceUrl: String = "",
     val asOf: String = "",
+    val distanceKm: Double? = null,
 )
 
 data class MarketEstimate(
     val basis: PriceBasis,
     val group: Int,
     val comparables: List<Comparable>,
-    /** Radius used for the user's own listings, if coordinates were known. */
+    /** Search radius finally used (km), or null when the place has no coordinates. */
     val radiusKm: Double?,
     val median: Double?,
     val fairLow: Double?,
     val fairHigh: Double?,
     val confidence: Confidence,
     val guideline: GuidelineInfo?,
+    /** The radius had to be widened beyond the normal limit for this type (warn the user). */
+    val widened: Boolean = false,
+    /** Normal radius for this type (km). */
+    val baseRadiusKm: Double = PriceRules.baseKm(group),
+    /** No usable comparables of the same type nearby: show "not enough nearby data", no verdict. */
+    val insufficient: Boolean = false,
+    /** The place has a map pin (distances are real) – without one only exact name matches are used. */
+    val hasPin: Boolean = true,
 )
 
 data class PriceCheck(
@@ -100,12 +109,18 @@ data class PriceCheck(
 }
 
 object PriceRules {
-    val RADII_KM = listOf(3.0, 5.0, 10.0)
-    const val MIN_OWN = 4
-    const val MARKET_MAX = 5
-    const val MARKET_MIN = 3
-    const val MARKET_NEAR_KM = 15.0
-    const val GUIDELINE_NEAR_KM = 3.0
+    /** Normal search radius (km) for every type. */
+    fun baseKm(@Suppress("UNUSED_PARAMETER") group: Int): Double = BASE_KM
+    /** The radius widens to [MAX_KM] when fewer than [MIN_COMPS] are found – never beyond. */
+    fun steps(group: Int): List<Double> = listOf(baseKm(group), MAX_KM)
+    const val BASE_KM = 5.0
+    /** Hard limit: nothing beyond 10 km is ever used. */
+    const val MAX_KM = 10.0
+    const val MIN_COMPS = 3
+    /** Live lookups are reused for this many days, then refreshed. */
+    const val CACHE_DAYS = 30
+    const val GUIDELINE_NEAR_KM = 5.0
+    const val GUIDELINE_AGRI_NEAR_KM = 10.0
     const val SUSPICIOUS_RATIO = 0.70
     const val FAIR_BAND = 0.15
     const val TOO_HIGH_RATIO = 1.40
@@ -130,9 +145,22 @@ private fun locMatches(loc: String, target: String): Boolean {
 fun nameMatches(a: String, b: String): Boolean {
     if (locMatches(a, b)) return true
     fun loose(s: String) = normalizeLocation(s).replace("th", "t").replace("aa", "a").replace("ee", "i")
-        .replace("oo", "u").replace(Regex("(.)\\1"), "$1")
+        .replace("oo", "u").replace("zh", "l").replace(Regex("(.)\\1"), "$1")
     val la = loose(a); val lb = loose(b)
     return la.length >= 5 && lb.length >= 5 && (la == lb || la.contains(lb) || lb.contains(la))
+}
+
+/** Exact-ish name equality (no substring matching) – used when the property has no map pin. */
+fun sameName(a: String, b: String): Boolean {
+    fun loose(s: String) = normalizeLocation(s.substringBefore("(")).replace("th", "t").replace("aa", "a").replace("ee", "i")
+        .replace("oo", "u").replace("zh", "l").replace(Regex("(.)\\1"), "$1")
+    val la = loose(a); val lb = loose(b)
+    return la.length >= 4 && la == lb
+}
+
+fun sameDistrict(a: String, b: String): Boolean {
+    if (a.isBlank() || b.isBlank()) return true
+    return nameMatches(a.removeSuffix(" District").removeSuffix(" district"), b.removeSuffix(" District").removeSuffix(" district"))
 }
 
 fun findGuideline(p: Property, guidelines: List<GuidelineValue>): GuidelineValue? =
@@ -156,19 +184,11 @@ fun quoteHistory(p: Property, data: AppData): List<Quote> =
         .sortedBy { it.at }
         .map { Quote(it.at, it.quotedPrice ?: 0) }
 
-/** The dataset entry for a type group, plus whether it is a fallback type. */
-fun MarketRates.forGroup(group: Int): Pair<TypeRate, Boolean>? = when (group) {
-    0 -> plot?.let { it to false }
-    1 -> farmland?.let { it to false }
-    2 -> house?.let { it to false } ?: apartment?.let { it to true } ?: overall?.let { it to true }
-    3 -> apartment?.let { it to false } ?: overall?.let { it to true } ?: house?.let { it to true }
-    else -> null
-}
 
 /** A place to estimate the market at: a property, a locality or a searched point. */
-data class AreaPoint(val names: List<String>, val lat: Double?, val lng: Double?)
+data class AreaPoint(val names: List<String>, val lat: Double?, val lng: Double?, val district: String = "")
 
-fun Property.areaPoint() = AreaPoint(listOf(locality, taluk).filter { it.isNotBlank() }, lat, lng)
+fun Property.areaPoint() = AreaPoint(listOf(locality).filter { it.isNotBlank() }, lat, lng, district)
 
 private fun distance(a: AreaPoint, lat: Double?, lng: Double?): Double? {
     val aLat = a.lat; val aLng = a.lng
@@ -177,148 +197,133 @@ private fun distance(a: AreaPoint, lat: Double?, lng: Double?): Double? {
 
 private fun Double.orNullIfBad(): Double? = if (isNaN() || isInfinite() || this <= 0) null else this
 
+/** An online rate in the requested basis. */
+private fun OnlineRate.inBasis(basis: PriceBasis): Triple<Double?, Double?, Double?> {
+    val from = when (unit.lowercase()) {
+        "sqft", "sq ft", "per_sqft" -> PriceBasis.PER_SQFT
+        "acre", "per_acre" -> PriceBasis.PER_ACRE
+        else -> PriceBasis.PER_CENT
+    }
+    fun c(v: Double?) = v?.let { convertRate(it, from, basis) }
+    return Triple(c(min), c(max), c(typical ?: if (min != null && max != null) (min + max) / 2 else min ?: max))
+}
+
 /**
- * Market estimate for a type group at a place. Combines
- *  (a) the user's own listings of the same type group within 3 km (expanding to 5 / 10 km until there are 4),
- *  (b) the bundled dataset: localities matching by name plus the nearest ones by distance (up to 5),
- *  and falls back to the dataset's city-wide average so there is always an answer when the type is covered.
+ * Market estimate for a type group at a place – live-lookup rules (v2.1):
+ *  - SAME type only (plot / land vs plot / land, farmland vs farmland, house vs house, flat vs flat);
+ *  - only comparables near the place's own coordinates: 5 km, widening (with a warning) to a hard maximum of
+ *    10 km when fewer than 3 are found – nothing beyond 10 km, ever; no bundled data, no city averages;
+ *  - sources: the user's own saved properties and the cached live lookup (Gemini + Google Search) rates
+ *    that are less than [PriceRules.CACHE_DAYS] days old;
+ *  - without a map pin, or when nothing qualifies, the estimate is [MarketEstimate.insufficient]: no verdict.
  */
 fun estimateMarket(
     point: AreaPoint,
     group: Int,
     data: AppData,
-    dataset: MarketDataset = MarketData.dataset,
     excludePropertyId: String? = null,
+    now: Long = com.hark.sothudiary.data.nowMillis(),
 ): MarketEstimate {
     val basis = groupBasis(group)
-    val unit = basis.rateUnit()
-    val comps = mutableListOf<Comparable>()
+    val hasPin = point.lat != null && point.lng != null
 
-    // (a) own listings
-    val own = data.properties.filter { o ->
-        o.id != excludePropertyId && o.type.group() == group && (o.unitPrice() ?: 0.0) > 0
+    data class Cand(val c: Comparable, val dist: Double?)
+    val cands = mutableListOf<Cand>()
+
+    // (a) own saved properties of the same type group
+    data.properties.filter { o -> o.id != excludePropertyId && o.type.group() == group && (o.unitPrice() ?: 0.0) > 0 }.forEach { o ->
+        val d = distance(point, o.lat, o.lng)
+        cands += Cand(
+            Comparable(
+                label = o.title, labelTa = null, distanceKm = d, rate = o.unitPrice() ?: 0.0, min = null, max = null,
+                source = CompSource.YOUR_LISTING, propertyId = o.id, lat = o.lat, lng = o.lng,
+                district = o.district, otherDistrict = !sameDistrict(o.district, point.district),
+            ),
+            d,
+        )
     }
+
+    // (b) live-lookup rates (cache) – asking prices of the same group, not older than the cache period
+    data.onlineRates.filter { it.group == group && it.kind == RateKind.ASKING && isFresh(it.fetchedAt, now) }.forEach { r ->
+        val (mn, mx, mid) = r.inBasis(basis)
+        val m = mid?.orNullIfBad() ?: return@forEach
+        val d = distance(point, r.lat, r.lng)
+        cands += Cand(
+            Comparable(
+                label = r.place, labelTa = null, distanceKm = d, rate = m, min = mn, max = mx, source = CompSource.ONLINE,
+                sourceName = r.sourceName, sourceUrl = r.sourceUrl, asOf = r.asOf, lowConfidence = true,
+                lat = r.lat, lng = r.lng, district = r.district,
+                otherDistrict = !sameDistrict(r.district, point.district),
+            ),
+            d,
+        )
+    }
+    // The same listing can come back from two lookups close to each other: keep one.
+    val unique = cands.distinctBy { c -> if (c.c.propertyId != null) c.c.propertyId else c.c.label.lowercase() + "|" + c.c.sourceUrl + "|" + c.c.rate.toLong() }
+
     var radiusUsed: Double? = null
-    val hasCoords = point.lat != null && point.lng != null
-    val ownPicked = mutableListOf<Pair<Property, Double?>>()
-    if (hasCoords) {
-        val withDist = own.mapNotNull { o -> distance(point, o.lat, o.lng)?.let { o to it } }
-        for (r in PriceRules.RADII_KM) {
+    var chosen: List<Cand> = emptyList()
+    if (hasPin) {
+        for (r in PriceRules.steps(group)) {
             radiusUsed = r
-            val inR = withDist.filter { it.second <= r }
-            ownPicked.clear(); ownPicked.addAll(inR.map { it.first to it.second })
-            if (inR.size >= PriceRules.MIN_OWN) break
+            chosen = unique.filter { it.dist != null && it.dist <= r }
+            if (chosen.size >= PriceRules.MIN_COMPS) break
         }
     }
-    own.filter { o -> o.lat == null && point.names.any { n -> nameMatches(o.locality, n) } && ownPicked.none { it.first.id == o.id } }
-        .forEach { ownPicked += it to null }
-    ownPicked.forEach { (o, d) ->
-        comps += Comparable(
-            label = o.title, labelTa = null, distanceKm = d, rate = o.unitPrice() ?: 0.0, min = null, max = null,
-            source = CompSource.YOUR_LISTING, propertyId = o.id, lat = o.lat, lng = o.lng,
-            matchedByName = d == null,
-        )
-    }
+    val comps = chosen.map { it.c }.filter { it.rate > 0 && (it.distanceKm ?: 99.0) <= PriceRules.MAX_KM }
+    val widened = hasPin && comps.any { (it.distanceKm ?: 0.0) > PriceRules.BASE_KM }
 
-    // (b) dataset
-    data class Cand(val loc: MarketLocality, val rate: TypeRate, val fallback: Boolean, val range: RateRange, val dist: Double?, val byName: Boolean)
-    val cands = dataset.localities.mapNotNull { loc ->
-        val (tr, fb) = loc.rates?.forGroup(group) ?: return@mapNotNull null
-        val range = tr.rangeIn(unit) ?: return@mapNotNull null
-        val byName = point.names.any { n -> nameMatches(loc.name, n) || (loc.nameTa != null && nameMatches(loc.nameTa, n)) }
-        Cand(loc, tr, fb, range, distance(point, loc.lat, loc.lng), byName)
-    }
-    val primary = cands.filter { !it.fallback }
-    fun pick(pool: List<Cand>): List<Cand> {
-        val named = pool.filter { it.byName }.sortedBy { it.dist ?: 0.0 }
-        val near = pool.filter { !it.byName && it.dist != null }.sortedBy { it.dist }
-        val within = near.filter { (it.dist ?: 0.0) <= PriceRules.MARKET_NEAR_KM }
-        val nearest = if (within.size >= PriceRules.MARKET_MIN || named.isNotEmpty()) within else near.take(PriceRules.MARKET_MIN)
-        return (named + nearest).distinctBy { it.loc.name }.take(PriceRules.MARKET_MAX)
-    }
-    var chosen = pick(primary)
-    if (chosen.isEmpty()) chosen = pick(cands.filter { it.fallback })
-    chosen.forEach { c ->
-        val mid = c.range.mid ?: return@forEach
-        comps += Comparable(
-            label = c.loc.name, labelTa = c.loc.nameTa, distanceKm = c.dist, rate = mid,
-            min = c.range.min, max = c.range.max,
-            source = if (c.fallback) CompSource.MARKET_FALLBACK else CompSource.MARKET,
-            sourceName = c.rate.sourceName, sourceUrl = c.rate.sourceUrl, asOf = c.rate.asOf,
-            lowConfidence = c.fallback || c.rate.confidence.equals("low", ignoreCase = true),
-            lat = c.loc.lat, lng = c.loc.lng, matchedByName = c.byName,
-        )
-    }
-    if (comps.none { it.source != CompSource.YOUR_LISTING } && primary.isNotEmpty()) {
-        // Nothing near or matching: use the city-wide average for this type.
-        val mids = primary.mapNotNull { it.range.mid }
-        median(mids)?.let { m ->
-            comps += Comparable(
-                label = dataset.city.ifBlank { "City" }, labelTa = null, distanceKm = null, rate = m,
-                min = median(primary.mapNotNull { it.range.min }), max = median(primary.mapNotNull { it.range.max }),
-                source = CompSource.CITY_AVERAGE, sourceName = primary.map { it.rate.sourceName }.distinct().take(3).joinToString(", "),
-                asOf = dataset.generated, lowConfidence = true,
-            )
-        }
-    }
-
-    val valid = comps.filter { it.rate > 0 }
-    // Fallback / city-average figures only count when nothing better exists.
-    val strong = valid.filter { it.source == CompSource.YOUR_LISTING || it.source == CompSource.MARKET }
-    val basisSet = strong.ifEmpty { valid }
-    val med = median(basisSet.map { it.rate })
-    var low = median(basisSet.map { it.min ?: (it.rate * 0.9) })
-    var high = median(basisSet.map { it.max ?: (it.rate * 1.1) })
+    val med = median(comps.map { it.rate })
+    var low = median(comps.map { it.min ?: (it.rate * 0.9) })
+    var high = median(comps.map { it.max ?: (it.rate * 1.1) })
     if (med != null) {
         low = minOf(low ?: med, med)
         high = maxOf(high ?: med, med)
     }
-
-    val near5 = strong.count { (it.distanceKm ?: 99.0) <= 5.0 || it.matchedByName }
-    val near10 = strong.count { (it.distanceKm ?: 99.0) <= 10.0 || it.matchedByName }
+    val near = comps.count { (it.distanceKm ?: 99.0) <= PriceRules.BASE_KM }
     val confidence = when {
-        near5 >= 4 -> Confidence.HIGH
-        near10 >= 2 || (near5 >= 1 && strong.any { !it.lowConfidence && it.source == CompSource.MARKET }) -> Confidence.MEDIUM
+        widened && near < 2 -> Confidence.LOW
+        near >= 4 && comps.count { !it.lowConfidence } >= 2 -> Confidence.HIGH
+        near >= 2 -> Confidence.MEDIUM
         else -> Confidence.LOW
     }
 
     return MarketEstimate(
-        basis = basis, group = group, comparables = valid.sortedWith(compareBy({ it.distanceKm ?: if (it.matchedByName) 0.0 else 999.0 })),
+        basis = basis, group = group,
+        comparables = comps.sortedWith(compareBy({ it.distanceKm ?: 0.0 }, { it.label })),
         radiusKm = radiusUsed, median = med, fairLow = low, fairHigh = high, confidence = confidence,
-        guideline = guidelineAt(point, group, data, dataset),
+        guideline = guidelineAt(point, group, data, now),
+        widened = widened, insufficient = comps.isEmpty(), hasPin = hasPin,
     )
 }
 
-/** User-entered guideline value first, then the dataset's (land types only). */
-fun guidelineAt(point: AreaPoint, group: Int, data: AppData, dataset: MarketDataset = MarketData.dataset): GuidelineInfo? {
+/** User-entered guideline value first, then a guideline value from the live lookup near the point. */
+fun guidelineAt(point: AreaPoint, group: Int, data: AppData, now: Long = com.hark.sothudiary.data.nowMillis()): GuidelineInfo? {
     val basis = groupBasis(group)
     val user = point.names.firstNotNullOfOrNull { n -> data.guidelines.firstOrNull { locMatches(it.location, n) } }
     if (user != null) {
         val v = guidelineFor(basis, user)?.orNullIfBad()
         if (v != null) return GuidelineInfo(v, null, null, user.location, fromUser = true)
     }
-    // The dataset's guideline values are urban street values for house sites: they are not comparable with
-    // built-up prices (house / apartment) nor with agricultural land, so they are used for plots / land only.
-    if (group != 0) return null
-    val unit = basis.rateUnit()
-    val withG = dataset.localities.mapNotNull { loc ->
-        val r = loc.rates?.guideline?.rangeIn(unit) ?: return@mapNotNull null
-        Triple(loc, r, distance(point, loc.lat, loc.lng))
-    }
-    val named = withG.firstOrNull { (loc, _, _) -> point.names.any { n -> nameMatches(loc.name, n) || (loc.nameTa != null && nameMatches(loc.nameTa, n)) } }
-    val near = withG.filter { (it.third ?: 99.0) <= PriceRules.GUIDELINE_NEAR_KM }.minByOrNull { it.third ?: 99.0 }
-    val hit = named ?: near ?: return null
-    val (loc, range, _) = hit
-    val g = loc.rates?.guideline
-    // The village minimum is used as the floor: a specific street can be higher.
-    val value = (range.min ?: range.mid)?.orNullIfBad() ?: return null
-    return GuidelineInfo(value, range.min, range.max, loc.name, fromUser = false, g?.sourceName ?: "", g?.sourceUrl ?: "", g?.asOf ?: "")
+    // Urban street guideline values are for house sites: not comparable with built-up prices (house / apartment).
+    if (group == 2 || group == 3) return null
+    if (point.lat == null || point.lng == null) return null
+    val nearKm = if (group == 1) PriceRules.GUIDELINE_AGRI_NEAR_KM else PriceRules.GUIDELINE_NEAR_KM
+    val online = data.onlineRates.filter { it.group == group && it.kind == RateKind.GUIDELINE && isFresh(it.fetchedAt, now) }
+        .mapNotNull { r -> distance(point, r.lat, r.lng)?.let { r to it } }
+        .filter { it.second <= nearKm }
+        .minByOrNull { it.second } ?: return null
+    val (r, d) = online
+    val (mn, mx, mid) = r.inBasis(basis)
+    // The minimum is used as the floor: a specific street / survey number can be higher.
+    val v = (mn ?: mid)?.orNullIfBad() ?: return null
+    return GuidelineInfo(v, mn, mx, r.place, fromUser = false, r.sourceName, r.sourceUrl, r.asOf, d)
 }
 
-fun checkPrice(p: Property, data: AppData, dataset: MarketDataset = MarketData.dataset): PriceCheck {
+fun checkPrice(p: Property, data: AppData): PriceCheck {
     val basis = p.type.basis()
     val unit = p.unitPrice()
-    val est = estimateMarket(p.areaPoint(), p.type.group(), data, dataset, excludePropertyId = p.id)
+    val est = estimateMarket(p.areaPoint(), p.type.group(), data, excludePropertyId = p.id)
     val gv = est.guideline?.value
     val med = est.median
     val ratio = if (unit != null && med != null && med > 0) unit / med else null
@@ -328,7 +333,7 @@ fun checkPrice(p: Property, data: AppData, dataset: MarketDataset = MarketData.d
     val verdict = when {
         unit == null -> Verdict.UNKNOWN
         belowGuideline -> Verdict.SUSPICIOUS_LOW
-        ratio == null -> Verdict.UNKNOWN
+        est.insufficient || ratio == null -> Verdict.UNKNOWN
         ratio < PriceRules.SUSPICIOUS_RATIO -> Verdict.SUSPICIOUS_LOW
         ratio < 1 - PriceRules.FAIR_BAND -> Verdict.GOOD
         ratio <= 1 + PriceRules.FAIR_BAND -> Verdict.FAIR

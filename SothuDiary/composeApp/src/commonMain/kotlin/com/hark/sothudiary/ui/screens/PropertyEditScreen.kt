@@ -32,7 +32,20 @@ import com.hark.sothudiary.ui.map.PickedLocation
 import com.hark.sothudiary.ui.theme.LocalBrand
 import com.hark.sothudiary.domain.ListingParser
 import com.hark.sothudiary.domain.ParsedListing
-import com.hark.sothudiary.domain.fetchLinkMeta
+import com.hark.sothudiary.domain.Geocoder
+import com.hark.sothudiary.domain.BROWSER_USER_AGENT
+import com.hark.sothudiary.domain.social.SocialPost
+import com.hark.sothudiary.domain.social.fetchComments
+import com.hark.sothudiary.domain.social.platformOf
+import com.hark.sothudiary.domain.social.readPost
+import com.hark.sothudiary.data.SourcePlatform
+import com.hark.sothudiary.httpBytes
+import com.hark.sothudiary.i18n.tr
+import com.hark.sothudiary.ui.components.ClaimChips
+import com.hark.sothudiary.ui.reader.PostReaderOverlay
+import androidx.compose.material.icons.filled.TravelExplore
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.hark.sothudiary.domain.youtubeThumb
 import com.hark.sothudiary.ui.components.AutoFillColor
 import com.hark.sothudiary.ui.components.PropertyImage
@@ -80,7 +93,6 @@ import com.hark.sothudiary.i18n.LocalLang
 import com.hark.sothudiary.i18n.S
 import com.hark.sothudiary.i18n.f
 import com.hark.sothudiary.i18n.s
-import com.hark.sothudiary.i18n.tr
 import com.hark.sothudiary.ui.AppContext
 import com.hark.sothudiary.ui.Route
 import com.hark.sothudiary.ui.components.AppTopBar
@@ -128,60 +140,141 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
     var newBrokerPhone by remember(route) { mutableStateOf("") }
     var newBrokerName by remember(route) { mutableStateOf("") }
     var createBroker by remember(route) { mutableStateOf(true) }
+    var reviews by remember(route) { mutableStateOf(existing?.reviews ?: emptyList()) }
+    var claims by remember(route) { mutableStateOf(existing?.postClaims ?: emptySet()) }
+    var readStep by remember(route) { mutableStateOf("") }
+    var readMethods by remember(route) { mutableStateOf(listOf<String>()) }
+    var captionMissing by remember(route) { mutableStateOf(false) }
+    var showReader by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val ytKey = data.settings.youtubeApiKey
     val isShare = existing == null && (route.prefillUrl.isNotBlank() || route.prefillCaption.isNotBlank() || route.prefillImages.isNotEmpty())
 
     /** Fills only fields that are still empty, and marks them as auto-filled. */
     fun apply(pl: ParsedListing, author: String? = null) {
         val a = auto.toMutableSet()
-        if (title.isBlank() && !pl.title.isNullOrBlank()) { title = pl.title; a += "title" }
+        if (title.isBlank()) {
+            val t = pl.title?.takeIf { it.count(Char::isLetter) >= 6 }
+                ?: listOfNotNull(
+                    pl.size?.let { dec(it, 2) + " " + (pl.unit ?: unit).tr().of(lang) },
+                    pl.type?.tr()?.of(lang),
+                    pl.placeText?.let { "– $it" },
+                ).joinToString(" ").takeIf { pl.type != null || pl.size != null }
+            if (!t.isNullOrBlank()) { title = t; a += "title" }
+        }
         if (caption.isBlank() && !pl.description.isNullOrBlank()) { caption = pl.description; a += "caption" }
         if (price.isBlank() && pl.totalPrice != null) { price = pl.totalPrice.toString(); a += "price" }
-        if (size.isBlank() && pl.size != null) {
-            size = dec(pl.size, 3); unit = pl.unit ?: unit; a += "size"
-        }
         if (!typeTouched && pl.type != null) { type = pl.type; typeTouched = true; a += "type" }
-        val loc = pl.locality
-        if (loc != null && locality.isBlank()) {
-            locality = loc.name.substringBefore("(").trim(); a += "locality"
-            if (lat == null && loc.lat != null && loc.lng != null) { lat = loc.lat; lng = loc.lng; a += "pin" }
+        if (size.isBlank()) {
+            val bu = pl.builtUpSqft
+            if (bu != null && (type == PropertyType.HOUSE || type == PropertyType.APARTMENT)) {
+                size = dec(bu, 0); unit = AreaUnit.SQFT; a += "size"
+            } else if (pl.size != null) {
+                size = dec(pl.size, 3); unit = pl.unit ?: unit; a += "size"
+            }
         }
-        if (district.isBlank() && (pl.district != null || loc != null)) { district = pl.district ?: "Madurai"; a += "district" }
-        if (brokerId == null && newBrokerPhone.isBlank()) {
+        if (pl.placeText != null && locality.isBlank()) {
+            locality = pl.placeText; a += "locality"
+        }
+        val d = pl.district
+        if (district.isBlank() && d != null) { district = d; a += "district" }
+        if (pl.claims.isNotEmpty()) { claims = claims + pl.claims.map { it.name }; a += "claims" }
+        if (brokerId == null) {
             val phone = pl.phones.firstOrNull()
-            if (phone != null) {
+            if (phone != null && newBrokerPhone.isBlank()) {
                 val match = data.brokers.firstOrNull { b ->
                     listOf(b.phone, b.whatsapp).any { it.filter(Char::isDigit).takeLast(10) == phone }
                 }
                 if (match != null) { brokerId = match.id; a += "broker" }
-                else { newBrokerPhone = phone; newBrokerName = author ?: ""; a += "broker" }
+                else { newBrokerPhone = phone; a += "broker" }
+            }
+            if (newBrokerPhone.isNotBlank() && newBrokerName.isBlank()) {
+                (pl.brokerName ?: author)?.let { newBrokerName = it }
             }
         }
         auto = a
     }
 
+    val allTexts = remember(route) { mutableListOf<String>() }
+
+    suspend fun ocrFile(file: String) {
+        readStep = S.stepOcr.of(lang)
+        val ocr = suspendCancellableCoroutine<String?> { cont -> ctx.platform.recognizeText(file) { if (cont.isActive) cont.resume(it) } }
+        if (!ocr.isNullOrBlank()) {
+            allTexts += ocr
+            apply(ListingParser.parse(allTexts.joinToString("\n")))
+        }
+    }
+
+    /** Uses a post read from the link or the in-app reader: text, picture (saved + OCR), comments. */
+    suspend fun ingest(post: SocialPost) {
+        readMethods = (readMethods + post.methods).distinct()
+        val text = listOfNotNull(post.caption, post.title?.takeIf { t -> post.caption?.contains(t.take(30)) != true }).joinToString("\n")
+        if (text.isNotBlank()) {
+            allTexts.add(0, text)
+            apply(ListingParser.parse(allTexts.joinToString("\n")), post.author)
+            captionMissing = false
+        }
+        if (post.comments.isNotEmpty()) reviews = (post.comments + reviews).distinctBy { it.author + it.text.take(60) }.take(15)
+        val img = post.image
+        if (img != null && imageFile.isBlank()) {
+            // CDN links of Instagram / Facebook expire: keep a copy, and read any text printed on it.
+            readStep = S.stepImage.of(lang)
+            val bytes = httpBytes(img, BROWSER_USER_AGENT)
+            val saved = bytes?.let { ctx.platform.saveImage(it, if (img.contains(".png")) "png" else "jpg") }
+            if (saved != null) { imageFile = saved; ocrFile(saved) } else if (imageUrl.isBlank()) imageUrl = img
+        }
+    }
+
+    /** Finds the map pin for the place named in the post (Nominatim, anywhere in India; the named district wins). */
+    suspend fun geocodeIfNeeded() {
+        if (lat != null) return
+        val pl = ListingParser.parse(allTexts.joinToString("\n"))
+        val queries = (pl.geocodeQueries() + listOfNotNull(locality.takeIf { it.isNotBlank() }?.let { listOf(it, district).filter { x -> x.isNotBlank() }.joinToString(", ") })).distinct()
+        if (queries.isEmpty()) return
+        readStep = S.stepLocating.of(lang)
+        val wantDistrict = pl.district ?: district
+        for (q in queries.take(4)) {
+            val results = Geocoder.search(q, limit = 5)
+            val hit = results.firstOrNull { r -> wantDistrict.isNotBlank() && (r.district.contains(wantDistrict, true) || r.displayName.contains(wantDistrict, true)) }
+                ?: results.firstOrNull { wantDistrict.isBlank() && it.state.contains("Tamil", true) }
+                ?: results.firstOrNull { wantDistrict.isBlank() }
+            if (hit != null && lat == null) {
+                lat = hit.lat; lng = hit.lng; address = hit.displayName
+                if (locality.isBlank() || "locality" in auto) { locality = q.substringBefore(",").trim(); auto = auto + "locality" }
+                if (taluk.isBlank() && hit.taluk.isNotBlank()) taluk = hit.taluk
+                if (district.isBlank() && hit.district.isNotBlank()) { district = hit.district; auto = auto + "district" }
+                auto = auto + "pin"
+                return
+            }
+        }
+    }
+
     LaunchedEffect(route) {
         if (!isShare) return@LaunchedEffect
         reading = true
-        val texts = mutableListOf(route.prefillCaption)
+        allTexts += route.prefillCaption
         apply(ListingParser.parse(route.prefillCaption))
         // Poster / screenshot text (on-device OCR)
-        route.prefillImages.firstOrNull()?.let { img ->
-            val ocr = suspendCancellableCoroutine<String?> { cont -> ctx.platform.recognizeText(img) { if (cont.isActive) cont.resume(it) } }
-            if (!ocr.isNullOrBlank()) {
-                texts += ocr
-                apply(ListingParser.parse(texts.joinToString("\n")))
-            }
-        }
-        // Link preview (YouTube oEmbed / Open Graph)
+        route.prefillImages.firstOrNull()?.let { ocrFile(it) }
+        // The link: YouTube description, Instagram / Facebook caption (crawler preview, embed page, mobile pages)
         if (route.prefillUrl.isNotBlank()) {
-            val meta = fetchLinkMeta(route.prefillUrl)
-            if (meta != null) {
-                if (imageFile.isBlank() && imageUrl.isBlank() && !meta.image.isNullOrBlank()) imageUrl = meta.image
-                val metaText = listOfNotNull(meta.title, meta.description).joinToString("\n")
-                if (metaText.isNotBlank()) apply(ListingParser.parse(metaText + "\n" + texts.joinToString("\n")), meta.author)
-            }
+            readStep = S.stepLink.of(lang)
+            val post = runCatching { readPost(route.prefillUrl, ytKey) }.getOrNull()
+            if (post != null) ingest(post)
             if (imageFile.isBlank() && imageUrl.isBlank()) youtubeThumb(route.prefillUrl)?.let { imageUrl = it }
+            val p = platformOf(route.prefillUrl)
+            if ((p == SourcePlatform.INSTAGRAM || p == SourcePlatform.FACEBOOK) && post?.caption.isNullOrBlank() && route.prefillCaption.length < 40) {
+                captionMissing = true
+            }
+            // YouTube comments as user reviews (best effort, no key needed).
+            if (p == SourcePlatform.YOUTUBE && reviews.isEmpty()) {
+                readStep = S.stepComments.of(lang)
+                reviews = runCatching { fetchComments(route.prefillUrl, ytKey) }.getOrDefault(emptyList())
+            }
         }
+        geocodeIfNeeded()
+        readStep = ""
         reading = false
     }
 
@@ -251,6 +344,9 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
             imageUrl = imageUrl,
             folderIds = folderIds,
             notes = notes.trim(),
+            reviews = reviews,
+            reviewsFetchedAt = if (reviews.isNotEmpty() && existing?.reviews != reviews) com.hark.sothudiary.data.nowMillis() else existing?.reviewsFetchedAt ?: 0L,
+            postClaims = claims,
         )
         ctx.repo.upsertProperty(saved)
         if (existing == null) ctx.nav.replaceTop(Route.PropertyDetail(saved.id)) else ctx.nav.pop()
@@ -277,10 +373,22 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
                         Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = AutoFillColor)
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            if (reading) S.readingShare.s() else if (auto.isEmpty()) S.sharedLinkAdded.s() else S.autoFilledBanner.f(auto.size),
+                            if (reading) (readStep.ifBlank { S.readingShare.s() }) else if (auto.isEmpty()) S.sharedLinkAdded.s() else S.autoFilledBanner.f(auto.size),
                             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
                         )
                         if (reading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    }
+                    if (!reading && readMethods.isNotEmpty()) {
+                        Text(S.readVia.f(readMethods.joinToString(", ")), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (!reading && (captionMissing || platformOf(url).let { it == SourcePlatform.INSTAGRAM || it == SourcePlatform.FACEBOOK })) {
+                        if (captionMissing) Text(S.captionMissing.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { showReader = true }) {
+                                Icon(Icons.Filled.TravelExplore, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                                Text(S.readPost.s())
+                            }
+                        }
                     }
                 }
             }
@@ -312,6 +420,10 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
                     Text(S.type.s(), style = MaterialTheme.typography.labelLarge)
                     ChoiceChips(PropertyType.entries, type, { it.tr().s() }) { type = it; typeTouched = true; auto = auto - "type" }
                     if ("type" in auto) Text("✨ " + S.autoFilledCheck.s(), color = AutoFillColor, style = MaterialTheme.typography.labelMedium)
+                    if (claims.isNotEmpty()) {
+                        Text(S.postClaims.s(), style = MaterialTheme.typography.labelLarge)
+                        ClaimChips(claims)
+                    }
                     Text(S.status.s(), style = MaterialTheme.typography.labelLarge)
                     ChoiceChips(DealStatus.entries, status, { it.tr().s() }) { status = it }
                 }
@@ -435,6 +547,23 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
                 if (pl.district.isNotBlank()) district = pl.district
                 picking = false
             },
+        )
+    }
+
+    if (showReader) {
+        PostReaderOverlay(
+            url = url,
+            onResult = { post ->
+                showReader = false
+                scope.launch {
+                    reading = true
+                    ingest(post)
+                    geocodeIfNeeded()
+                    readStep = ""
+                    reading = false
+                }
+            },
+            onDismiss = { showReader = false },
         )
     }
 

@@ -1,5 +1,13 @@
 package com.hark.sothudiary.ui.screens
 
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import com.hark.sothudiary.ui.components.GeminiSetupCard
+import com.hark.sothudiary.ui.components.GeminiKeySteps
+import com.hark.sothudiary.i18n.groupTr
+import com.hark.sothudiary.ui.components.AI_STUDIO_URL
+import com.hark.sothudiary.ui.components.Field
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,7 +50,7 @@ import com.hark.sothudiary.ui.components.AppTopBar
 import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 
-const val APP_VERSION = "2.0"
+const val APP_VERSION = "2.1"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -58,6 +66,8 @@ fun SettingsScreen(ctx: AppContext) {
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (data.settings.geminiApiKey.isBlank()) GeminiSetupCard(ctx, onDismiss = null)
+
             SectionCard(title = S.language.s()) {
                 ChoiceChips(Lang.entries, data.settings.lang, { if (it == Lang.TA) "தமிழ்" else "English" }) { ctx.repo.setLang(it) }
             }
@@ -71,7 +81,7 @@ fun SettingsScreen(ctx: AppContext) {
                 Text(S.exportNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { ctx.platform.shareText("Sothu Diary backup", ctx.repo.exportJson()) }) {
+                    OutlinedButton(onClick = { ctx.platform.shareText(S.backupSubject.of(lang), ctx.repo.exportJson()) }) {
                         Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(S.exportJson.s())
                     }
                     OutlinedButton(onClick = {
@@ -93,6 +103,27 @@ fun SettingsScreen(ctx: AppContext) {
                         ctx.repo.setReminders(on)
                         ctx.platform.setReminders(on)
                     })
+                }
+            }
+
+            SectionCard(title = S.onlineServices.s()) {
+                var yt by remember(data.settings.youtubeApiKey) { mutableStateOf(data.settings.youtubeApiKey) }
+                var gm by remember(data.settings.geminiApiKey) { mutableStateOf(data.settings.geminiApiKey) }
+                var model by remember(data.settings.geminiModel) { mutableStateOf(data.settings.geminiModel) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(S.onlineServicesBody.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Field(gm, { gm = it }, S.geminiKey.s(), supporting = S.geminiKeyHint.s())
+                    TextButton(onClick = { ctx.platform.openUrl(AI_STUDIO_URL) }) { Text(S.getFreeKey.s()) }
+                    GeminiKeySteps()
+                    Field(model, { model = it }, S.geminiModel.s())
+                    Field(yt, { yt = it }, S.youtubeKey.s(), supporting = S.youtubeKeyHint.s())
+                    val changed = yt != data.settings.youtubeApiKey || gm != data.settings.geminiApiKey || model != data.settings.geminiModel
+                    Button(onClick = { ctx.repo.setApiKeys(yt, gm, model); ctx.platform.toast(S.saved.of(lang)) }, enabled = changed) { Text(S.save.s()) }
+                    HorizontalDivider()
+                    Text(S.onlineRatesSaved.f(data.rateLookups.size, data.onlineRates.size), style = MaterialTheme.typography.bodyMedium)
+                    if (data.rateLookups.isNotEmpty()) {
+                        TextButton(onClick = { ctx.repo.clearLookups() }) { Text(S.clearOnlineRates.s()) }
+                    }
                 }
             }
 

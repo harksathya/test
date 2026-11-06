@@ -37,10 +37,13 @@ fun PropertyType.basis(): PriceBasis = when (this) {
     else -> PriceBasis.PER_CENT
 }
 
-fun PriceBasis.rateUnit(): com.hark.sothudiary.data.market.RateUnit = when (this) {
-    PriceBasis.PER_CENT -> com.hark.sothudiary.data.market.RateUnit.PER_CENT
-    PriceBasis.PER_SQFT -> com.hark.sothudiary.data.market.RateUnit.PER_SQFT
-    PriceBasis.PER_ACRE -> com.hark.sothudiary.data.market.RateUnit.PER_ACRE
+/** The three units a rate can be expressed in. */
+enum class RateUnit { PER_SQFT, PER_CENT, PER_ACRE }
+
+fun PriceBasis.rateUnit(): RateUnit = when (this) {
+    PriceBasis.PER_CENT -> RateUnit.PER_CENT
+    PriceBasis.PER_SQFT -> RateUnit.PER_SQFT
+    PriceBasis.PER_ACRE -> RateUnit.PER_ACRE
 }
 
 /** Converts a rate from one basis to another (area based: 1 acre = 100 cents = 43,560 sq ft). */

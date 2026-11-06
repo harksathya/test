@@ -1,5 +1,17 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.domain.GeoPlace
+import androidx.compose.runtime.LaunchedEffect
+import com.hark.sothudiary.domain.formatDateShort
+import com.hark.sothudiary.domain.pricing.freshLookup
+import com.hark.sothudiary.domain.pricing.latestLookup
+import com.hark.sothudiary.domain.pricing.liveLookup
+import com.hark.sothudiary.ui.components.FindOnlineButton
+import com.hark.sothudiary.ui.components.GeminiKeyDialog
+import com.hark.sothudiary.ui.components.GeminiSetupCard
+import com.hark.sothudiary.ui.components.AI_STUDIO_URL
+import androidx.compose.material3.Button
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -47,18 +59,14 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hark.sothudiary.data.Lang
-import com.hark.sothudiary.data.market.MarketData
-import com.hark.sothudiary.data.market.MarketLocality
 import com.hark.sothudiary.domain.Geocoder
 import com.hark.sothudiary.domain.convertRate
 import com.hark.sothudiary.domain.groupBasis
 import com.hark.sothudiary.domain.normalizeLocation
 import com.hark.sothudiary.domain.pricing.AreaPoint
 import com.hark.sothudiary.domain.pricing.estimateMarket
-import com.hark.sothudiary.domain.pricing.forGroup
 import com.hark.sothudiary.domain.pricing.nameMatches
 import com.hark.sothudiary.domain.rateUnit
-import com.hark.sothudiary.data.market.rangeIn
 import com.hark.sothudiary.i18n.LocalLang
 import com.hark.sothudiary.i18n.S
 import com.hark.sothudiary.i18n.f
@@ -79,36 +87,35 @@ import com.hark.sothudiary.ui.components.rateText
 import com.hark.sothudiary.ui.components.reasoningLines
 import kotlinx.coroutines.launch
 
-/** A place the user asked about: a dataset locality or a searched point. */
-private data class AreaTarget(val name: String, val nameTa: String?, val lat: Double?, val lng: Double?)
+/** A place the user asked about: a searched point or a property's pin. */
+private data class AreaTarget(val name: String, val nameTa: String?, val lat: Double?, val lng: Double?, val district: String = "")
 
-private fun MarketLocality.target() = AreaTarget(name, nameTa, lat, lng)
+private fun GeoPlace.target(fallback: String) = AreaTarget(locality.ifBlank { fallback }, null, lat, lng, district)
 
 /**
- * "What is the farmland rate near Jaihindpuram?" – rates for any locality and type, usable before
- * adding a property. Combines the bundled dataset with the user's own listings nearby.
+ * "What is the farmland rate near this village?" – a LIVE lookup for any place in India and any type, usable
+ * before adding a property: same-type comparables within 5 km (10 km at most) from the Gemini + Google Search
+ * lookup (cached 30 days) and the user's own saved properties. No bundled data.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AreaRatesScreen(ctx: AppContext, initialLocality: String?, initialGroup: Int?, onBack: (() -> Unit)?) {
+fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: Int?, onBack: (() -> Unit)?) {
     val data = ctx.repo.data
     val lang = LocalLang.current
-    val dataset = MarketData.dataset
     val scope = rememberCoroutineScope()
+    val initialProp = remember { initialPropertyId?.let { id -> data.properties.firstOrNull { it.id == id } } }
     var group by remember { mutableStateOf(initialGroup ?: 0) }
-    var query by remember { mutableStateOf(initialLocality ?: "") }
-    val initialTarget = remember {
-        initialLocality?.let { n -> dataset.localities.firstOrNull { nameMatches(it.name, n) }?.target() ?: AreaTarget(n, null, null, null) }
+    var query by remember { mutableStateOf(initialProp?.locality ?: "") }
+    var target by remember {
+        mutableStateOf(initialProp?.let { p -> AreaTarget(p.locality.ifBlank { p.title }, null, p.lat, p.lng, p.district) })
     }
-    var target by remember { mutableStateOf(initialTarget) }
+    var results by remember { mutableStateOf<List<GeoPlace>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var searchMsg by remember { mutableStateOf<String?>(null) }
+    var finding by remember { mutableStateOf(false) }
+    var lookupMsg by remember { mutableStateOf<String?>(null) }
+    var askKey by remember { mutableStateOf(false) }
     val msgNone = S.noPlacesFound.s()
-
-    val q = normalizeLocation(query)
-    val suggestions = if (q.length < 2 || (target != null && target?.name == query)) emptyList() else dataset.localities.filter { l ->
-        normalizeLocation(l.name).contains(q) || (l.nameTa?.let { normalizeLocation(it).contains(q) } ?: false)
-    }.take(8)
 
     fun searchMap() {
         val text = query.trim()
@@ -116,14 +123,35 @@ fun AreaRatesScreen(ctx: AppContext, initialLocality: String?, initialGroup: Int
         searching = true
         searchMsg = null
         scope.launch {
-            val r = Geocoder.search(if (text.contains("madurai", ignoreCase = true)) text else "$text Madurai")
-                .ifEmpty { Geocoder.search(text) }
+            val r = Geocoder.search(text, limit = 8, nearLat = target?.lat, nearLng = target?.lng)
             searching = false
-            val first = r.firstOrNull()
-            if (first == null) searchMsg = msgNone
-            else target = AreaTarget(first.locality.ifBlank { text }, null, first.lat, first.lng)
+            results = r
+            if (r.isEmpty()) searchMsg = msgNone
         }
     }
+
+    fun lookup(t: AreaTarget, force: Boolean) {
+        val key = data.settings.geminiApiKey
+        val la = t.lat; val ln = t.lng
+        if (key.isBlank()) { if (force) askKey = true; return }
+        if (la == null || ln == null || finding) return
+        if (!force && freshLookup(data, la, ln, group) != null) return
+        finding = true
+        lookupMsg = null
+        scope.launch {
+            val r = runCatching { liveLookup(key, data.settings.geminiModel, la, ln, group, t.name) }.getOrNull()
+            if (r != null) ctx.repo.saveLookup(r.lookup, r.rates)
+            lookupMsg = when {
+                r == null -> S.onlineError.format(lang, "network")
+                r.error != null -> S.onlineError.format(lang, r.error)
+                r.rates.isEmpty() -> S.onlineNone.format(lang, r.lookup.skipped)
+                else -> S.onlineSaved.format(lang, r.rates.size, r.lookup.skipped)
+            }
+            finding = false
+        }
+    }
+
+    LaunchedEffect(target, group, data.settings.geminiApiKey) { target?.let { lookup(it, force = false) } }
 
     Scaffold(
         topBar = { AppTopBar(S.tabAreaRates.s(), ctx.toggleLang, onBack = onBack, subtitle = S.areaRatesSub.s()) },
@@ -133,6 +161,7 @@ fun AreaRatesScreen(ctx: AppContext, initialLocality: String?, initialGroup: Int
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (data.settings.geminiApiKey.isBlank()) GeminiSetupCard(ctx, onDismiss = null)
             SectionCard {
                 OutlinedTextField(
                     value = query,
@@ -141,32 +170,30 @@ fun AreaRatesScreen(ctx: AppContext, initialLocality: String?, initialGroup: Int
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
                         if (searching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else if (query.isNotEmpty()) IconButton(onClick = { query = ""; target = null }) { Icon(Icons.Filled.Clear, contentDescription = S.clear.s()) }
+                        else if (query.isNotEmpty()) IconButton(onClick = { query = ""; results = emptyList() }) { Icon(Icons.Filled.Clear, contentDescription = S.clear.s()) }
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
-                        val exact = suggestions.firstOrNull()
-                        if (exact != null) { target = exact.target(); query = exact.name } else searchMap()
-                    }),
+                    keyboardActions = KeyboardActions(onSearch = { searchMap() }),
                     shape = RoundedCornerShape(28.dp),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                suggestions.forEach { l ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { target = l.target(); query = l.name }.padding(vertical = 8.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(l.name + (l.nameTa?.let { " • $it" } ?: ""), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                if (query.trim().length >= 3 && (target == null || target?.name != query)) {
+                if (query.trim().length >= 3) {
                     OutlinedButton(onClick = { searchMap() }, enabled = !searching, modifier = Modifier.padding(top = 6.dp)) {
                         Icon(Icons.Filled.TravelExplore, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                         Text(S.findOnMap.f(query.trim()))
                     }
+                }
+                results.forEach { g ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { target = g.target(query.trim()); results = emptyList() }.padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(g.displayName, style = MaterialTheme.typography.bodySmall)
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
                 searchMsg?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 Spacer(Modifier.height(8.dp))
@@ -180,13 +207,13 @@ fun AreaRatesScreen(ctx: AppContext, initialLocality: String?, initialGroup: Int
             val t = target
             if (t != null) {
                 val names = listOfNotNull(t.name, t.nameTa)
-                val est = remember(t, group, data) { estimateMarket(AreaPoint(names, t.lat, t.lng), group, data, dataset) }
+                val est = remember(t, group, data) { estimateMarket(AreaPoint(names, t.lat, t.lng, t.district), group, data) }
                 val b = est.basis
-                SectionCard(title = S.ratesIn.f(if (lang == Lang.TA && t.nameTa != null) t.nameTa else t.name, groupTr(group).s()), icon = Icons.Filled.Insights,
+                SectionCard(title = S.ratesIn.f(t.name, groupTr(group).s()), icon = Icons.Filled.Insights,
                     accent = MaterialTheme.colorScheme.primary) {
                     val med = est.median
                     if (med == null) {
-                        Text(S.noRateData.s(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(S.notEnoughNearby.s(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
                     } else {
                         Text(rateText(med, b, lang), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
                         Text(S.typicalRate.s() + " • " + est.confidence.tr().s(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -206,6 +233,18 @@ fun AreaRatesScreen(ctx: AppContext, initialLocality: String?, initialGroup: Int
                             Text(line, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+                    val la = t.lat; val ln = t.lng
+                    val latest = if (la != null && ln != null) latestLookup(data, la, ln, group) else null
+                    if (latest != null) {
+                        Text(
+                            if (latest.error != null) S.lookupFailed.format(lang, formatDateShort(latest.fetchedAt, lang), latest.error)
+                            else S.lookupStatus.format(lang, formatDateShort(latest.fetchedAt, lang), latest.found, latest.place.ifBlank { "—" }),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (data.settings.geminiApiKey.isNotBlank()) FindOnlineButton({ lookup(t, force = true) }, finding, prominent = est.insufficient)
+                    else Button(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth()) { Text(S.setUpLiveCheck.s()) }
+                    lookupMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                     if (est.comparables.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -223,34 +262,36 @@ fun AreaRatesScreen(ctx: AppContext, initialLocality: String?, initialGroup: Int
                 }
             }
 
-            // Browse all localities that have data for this type
-            val unit = groupBasis(group).rateUnit()
-            val rows = dataset.localities.mapNotNull { l ->
-                val (tr, fb) = l.rates?.forGroup(group) ?: return@mapNotNull null
-                if (fb) return@mapNotNull null
-                val r = tr.rangeIn(unit) ?: return@mapNotNull null
-                Triple(l, r, tr)
-            }.sortedBy { it.first.name }
-            SectionCard(title = S.allLocalities.f(groupTr(group).s(), rows.size)) {
-                if (rows.isEmpty()) Text(S.noRateData.s(), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                rows.forEach { (l, r, tr) ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { target = l.target(); query = l.name }.padding(vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(if (lang == Lang.TA && l.nameTa != null) l.nameTa else l.name, fontWeight = FontWeight.SemiBold)
-                            Text(listOf(tr.sourceName, tr.asOf).filter { it.isNotBlank() }.joinToString(" • "),
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Earlier live lookups (cache) – tap to open
+            val recent = data.rateLookups.filter { it.error == null }.sortedByDescending { it.fetchedAt }.take(12)
+            if (recent.isNotEmpty()) {
+                SectionCard(title = S.recentLookups.s()) {
+                    recent.forEach { l ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { group = l.group; target = AreaTarget(l.place.substringBefore(",").ifBlank { "—" }, null, l.lat, l.lng) }
+                                .padding(vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(l.place.ifBlank { "${l.lat}, ${l.lng}" }, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(groupTr(l.group).s() + " • " + formatDateShort(l.fetchedAt, lang) + " • " + S.nComparables.f(l.found),
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
-                        Text(rangeText(r.min ?: r.mid, r.max ?: r.mid, groupBasis(group), lang), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(dataset.notes.take(400), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (askKey) {
+        GeminiKeyDialog(
+            current = data.settings.geminiApiKey,
+            onDismiss = { askKey = false },
+            onSave = { k -> ctx.repo.setApiKeys(data.settings.youtubeApiKey, k, data.settings.geminiModel); askKey = false },
+            onOpenStudio = { ctx.platform.openUrl(AI_STUDIO_URL) },
+        )
     }
 }

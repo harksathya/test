@@ -25,7 +25,7 @@ sealed interface Route {
     data class BrokerEdit(val id: String?) : Route
     data class InteractionEdit(val id: String?, val propertyId: String?, val brokerId: String?) : Route
     /** Area rates for a locality / type, optionally pre-selected. */
-    data class AreaRates(val locality: String? = null, val group: Int? = null) : Route
+    data class AreaRates(val propertyId: String? = null, val group: Int? = null) : Route
 }
 
 /** Simple state-based navigation: a selected tab plus a stack of detail/edit routes. */

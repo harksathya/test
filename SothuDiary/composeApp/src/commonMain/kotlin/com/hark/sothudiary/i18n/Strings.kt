@@ -181,7 +181,7 @@ object S {
     val updateAsking = Tr("Update the property's asking price to this quote", "சொத்தின் கேட்கும் விலையை இந்த விலைக்கு மாற்று")
     val summary = Tr("Summary of discussion", "பேச்சின் சுருக்கம்")
     val promises = Tr("Promises made", "கொடுத்த வாக்குறுதிகள்")
-    val promisesHint = Tr("e.g. will send EC copy by Sunday", "எ.கா. ஞாயிறுக்குள் EC நகல் அனுப்புவதாகச் சொன்னார்")
+    val promisesHint = Tr("e.g. will send EC copy by Sunday", "எ.கா. ஞாயிறுக்குள் வில்லங்கச் சான்று (EC) நகல் அனுப்புவதாகச் சொன்னார்")
     val nextFollowUp = Tr("Next follow-up", "அடுத்த பின்தொடர்வு")
     val followUpDate = Tr("Follow-up date", "பின்தொடர்வு தேதி")
     val tomorrow = Tr("Tomorrow", "நாளை")
@@ -232,9 +232,11 @@ object S {
     val importFailed = Tr("That file is not a Sothu Diary backup", "இது சொத்து டைரி காப்புப் பிரதி அல்ல")
     val howPriceCheckWorks = Tr("How the price check works", "விலைச் சரிபார்ப்பு எப்படி?")
     val priceRulesText = Tr(
-        "Plots / land are compared per cent (and sq ft), farmland per acre, houses and apartments per sq ft. Each property is compared with (a) your own listings of the same kind within 3 km (widening to 5 / 10 km until there are 4) and (b) the bundled Madurai market data for the nearest 3–5 localities or the locality named. The median of these gives the market rate; their ranges give the fair range. The government guideline value (your entry, or the village minimum from the dataset) is the floor.\n• Below guideline value or under 70% of market → Suspiciously low\n• 70–85% → Good price\n• Within ±15% or inside the fair range → Fair\n• Up to 40% above → High\n• Over 40% above → Too high\nMarket figures are asking prices from listing portals, not registered sale prices.",
-        "மனை / நிலம் சென்ட் (மற்றும் சதுர அடி) கணக்கிலும், விவசாய நிலம் ஏக்கர் கணக்கிலும், வீடு / அடுக்குமாடி சதுர அடி கணக்கிலும் ஒப்பிடப்படும். ஒவ்வொரு சொத்தும் (அ) 3 கி.மீ.க்குள் (4 கிடைக்கும் வரை 5 / 10 கி.மீ. வரை) உள்ள உங்கள் அதே வகைப் பதிவுகளுடனும் (ஆ) அருகிலுள்ள 3–5 மதுரைப் பகுதிகளின் சந்தைத் தகவலுடனும் ஒப்பிடப்படும். இவற்றின் நடுநிலை சந்தை விலை; வரம்புகள் நியாய வரம்பு. அரசு வழிகாட்டி மதிப்பு அடிப்படைக் கீழ் எல்லை.\n• வழிகாட்டி மதிப்புக்குக் கீழ் அல்லது சந்தையின் 70%-க்குக் கீழ் → சந்தேகமான குறைந்த விலை\n• 70–85% → நல்ல விலை\n• ±15% அல்லது நியாய வரம்புக்குள் → நியாயமான விலை\n• 40% வரை அதிகம் → அதிக விலை\n• 40%-க்கு மேல் → மிக அதிக விலை\nசந்தை விலைகள் இணையதள விளம்பரங்களில் கேட்கப்படும் விலைகள், பதிவு செய்யப்பட்ட விற்பனை விலைகள் அல்ல.",
+        "The price check is a live lookup for each property’s own map location and type – the app has no built-in price list and is not tied to any town. Google Gemini (your free key) searches the web for same-type asking prices and guideline values; every result is placed on the map and only those within 5 km are used, widening (with a warning) to a hard maximum of 10 km when fewer than 3 are found. Nothing beyond 10 km and no other property type is ever used. Your own saved properties of the same type within 10 km are included. Results are kept for 30 days (Refresh any time). If nothing qualifies you see “Not enough data within 10 km” and no verdict.\nPlots / land are compared per cent (and sq ft), farmland per acre, houses and apartments per sq ft. The median gives the market rate; the ranges give the fair range. The government guideline value (your entry, or one found nearby) is the floor.\n• Below guideline value or under 70% of market → Suspiciously low\n• 70–85% → Good price\n• Within ±15% or inside the fair range → Fair\n• Up to 40% above → High\n• Over 40% above → Too high\nMarket figures are asking prices from listings, not registered sale prices.",
+        "விலை சரிபார்ப்பு ஒவ்வொரு சொத்தின் வரைபட இடம் மற்றும் வகைக்கான நேரடித் தேடல் – ஆப்பில் உள்ளமைந்த விலைப் பட்டியல் இல்லை, எந்த ஊருடனும் கட்டுப்படவில்லை. Google Gemini (உங்கள் இலவச key) அதே வகைச் சொத்துகளின் கேட்கும் விலைகளையும் வழிகாட்டி மதிப்புகளையும் இணையத்தில் தேடுகிறது; ஒவ்வொரு முடிவும் வரைபடத்தில் குறிக்கப்பட்டு 5 கி.மீ.க்குள் உள்ளவை மட்டும் பயன்படுத்தப்படும்; 3-க்கும் குறைவாக இருந்தால் எச்சரிக்கையுடன் அதிகபட்சம் 10 கி.மீ. வரை. 10 கி.மீ.க்கு மேலுள்ளவையோ வேறு வகைச் சொத்துகளோ ஒருபோதும் பயன்படுத்தப்படாது. 10 கி.மீ.க்குள் உள்ள உங்கள் அதே வகைச் சொத்துகளும் சேர்க்கப்படும். முடிவுகள் 30 நாட்கள் வைக்கப்படும் (எப்போது வேண்டுமானாலும் புதுப்பிக்கலாம்). எதுவும் பொருந்தாவிட்டால் “10 கி.மீ.க்குள் போதுமான தகவல் இல்லை” என்று காட்டப்படும், மதிப்பீடு இல்லை.\nமனை / நிலம் ஒரு சென்ட் (மற்றும் சதுர அடி) விலையிலும், விவசாய நிலம் ஒரு ஏக்கர் விலையிலும், வீடு / அடுக்குமாடி ஒரு சதுர அடி விலையிலும் ஒப்பிடப்படுகின்றன. இடைநிலை (median) சந்தை விலை; வரம்புகள் நியாய வரம்பு. அரசு வழிகாட்டி மதிப்பு (உங்கள் பதிவு அல்லது அருகில் கண்டது) அடிமட்டம்.\n• வழிகாட்டி மதிப்புக்குக் கீழ் அல்லது சந்தையின் 70%-க்குக் கீழ் → சந்தேக விலை\n• 70–85% → நல்ல விலை\n• ±15% அல்லது நியாய வரம்புக்குள் → நியாயம்\n• 40% வரை அதிகம் → அதிக விலை\n• 40%-க்கு மேல் → மிக அதிகம்\nசந்தை விலைகள் விளம்பரங்களில் கேட்கப்படும் விலைகள், பதிவு செய்யப்பட்ட விற்பனை விலைகள் அல்ல.",
     )
+
+
     val about = Tr("About", "பற்றி")
     val aboutBody = Tr(
         "A personal diary for tracking land, house and plot deals: leads from YouTube / Instagram / Facebook, brokers, calls, promises, documents and a price sanity check.",
@@ -280,7 +282,7 @@ object S {
     val checkAreaRates = Tr("Check area rates", "பகுதி விலைகளைப் பார்")
 
     // More
-    val areaRatesSub = Tr("Market rates for any locality and type", "எந்தப் பகுதிக்கும் எந்த வகைக்கும் சந்தை விலை")
+    val areaRatesSub = Tr("Live market rates for any place and type", "எந்த இடத்துக்கும் எந்த வகைக்கும் நேரடிச் சந்தை விலை")
     val guidelineSub = Tr("Government guideline values you entered", "நீங்கள் பதிந்த அரசு வழிகாட்டி மதிப்புகள்")
     val settingsSub = Tr("Language, theme, reminders, backup", "மொழி, தோற்றம், நினைவூட்டல், காப்புப் பிரதி")
 
@@ -288,10 +290,10 @@ object S {
     val mapSubtitle = Tr("{0} on the map • {1} without a pin", "{0} வரைபடத்தில் • {1} குறியிடப்படவில்லை")
     val mapEmpty = Tr("No properties with a map pin yet. Open a property → Edit → Pick on map.", "இன்னும் வரைபடத்தில் குறிக்கப்பட்ட சொத்துகள் இல்லை. சொத்தைத் திறந்து → திருத்து → வரைபடத்தில் தேர்வு செய்யுங்கள்.")
     val allTypes = Tr("All types", "எல்லா வகைகளும்")
-    val showMarketAreas = Tr("Market data areas", "சந்தைத் தகவல் பகுதிகள்")
+    val showMarketAreas = Tr("Live-rate places", "நேரடி விலை இடங்கள்")
     val pickLocation = Tr("Pick location", "இடத்தைத் தேர்ந்தெடு")
     val useThisLocation = Tr("Use this location", "இந்த இடத்தைப் பயன்படுத்து")
-    val searchPlaceHint = Tr("Search a place, e.g. Jaihindpuram Madurai", "இடத்தைத் தேடுங்கள், எ.கா. Jaihindpuram Madurai")
+    val searchPlaceHint = Tr("Search a place, e.g. village and taluk", "இடத்தைத் தேடுங்கள், எ.கா. ஊர், தாலுகா")
     val useMyLocation = Tr("Use my current location", "என் தற்போதைய இடம்")
     val locating = Tr("Finding you…", "இடத்தைக் கண்டறிகிறது…")
     val enterCoordinates = Tr("Lat / Lng", "அட்ச / தீர்க்க")
@@ -301,7 +303,7 @@ object S {
     val pickHint = Tr("Search above, use your location, or tap the map to drop a pin", "மேலே தேடுங்கள், உங்கள் இடத்தைப் பயன்படுத்துங்கள், அல்லது வரைபடத்தில் தட்டி குறியிடுங்கள்")
     val noPointYet = Tr("No point chosen yet", "இன்னும் இடம் தேர்ந்தெடுக்கவில்லை")
     val dragHint = Tr("Tap the map or long-press and drag the pin to adjust", "சரிசெய்ய வரைபடத்தில் தட்டுங்கள் அல்லது குறியை அழுத்திப் பிடித்து இழுங்கள்")
-    val noPlacesFound = Tr("No places found – try adding the town name, e.g. “Madurai”", "இடங்கள் கிடைக்கவில்லை – ஊர்ப் பெயரைச் சேர்த்து முயற்சிக்கவும், எ.கா. “Madurai”")
+    val noPlacesFound = Tr("No places found – try adding the taluk or district name", "இடங்கள் கிடைக்கவில்லை – தாலுகா அல்லது மாவட்டப் பெயரைச் சேர்த்துப் பாருங்கள்")
     val searchOffline = Tr("Could not reach the map search – check the internet. You can still save the pin.", "வரைபடத் தேடலை அடைய முடியவில்லை – இணையத்தைச் சரிபாருங்கள். குறியை இன்னும் சேமிக்கலாம்.")
     val locationUnavailable = Tr("Location not available – allow location access and turn on GPS", "இடம் கிடைக்கவில்லை – இட அனுமதி கொடுத்து GPS-ஐ இயக்குங்கள்")
     val pickOnMap = Tr("Pick on map", "வரைபடத்தில் தேர்ந்தெடு")
@@ -323,7 +325,7 @@ object S {
     val comparablesTitle = Tr("Comparables ({0})", "ஒப்பீடுகள் ({0})")
     val showLess = Tr("Show less", "குறைவாகக் காட்டு")
     val showAllN = Tr("Show all {0}", "அனைத்து {0} காட்டு")
-    val askingPricesNote = Tr("Market figures are asking prices from listing portals (99acres, MagicBricks, etc.), not registered sale prices. Guideline values: TN Registration Dept. Always verify locally.", "சந்தை விலைகள் இணையதள விளம்பரங்களில் (99acres, MagicBricks போன்றவை) கேட்கப்படும் விலைகள், பதிவு செய்யப்பட்ட விற்பனை விலைகள் அல்ல. வழிகாட்டி மதிப்பு: தமிழ்நாடு பதிவுத் துறை. எப்போதும் உள்ளூரில் சரிபாருங்கள்.")
+    val askingPricesNote = Tr("Market figures are asking prices found on the web (listing sites, broker pages), not registered sale prices. Always verify locally and check the guideline value on TNREGINET.", "சந்தை விலைகள் இணையத்தில் (விளம்பரத் தளங்கள், தரகர் பக்கங்கள்) கிடைத்த கேட்கும் விலைகள், பதிவு செய்யப்பட்ட விற்பனை விலைகள் அல்ல. எப்போதும் உள்ளூரில் சரிபார்த்து, TNREGINET-இல் வழிகாட்டி மதிப்பைப் பாருங்கள்.")
     val seeAreaRates = Tr("Area rates", "பகுதி விலைகள்")
     val chartMedian = Tr("Median", "நடுநிலை")
     val chartGuideline = Tr("Guideline", "வழிகாட்டி")
@@ -344,7 +346,7 @@ object S {
     val rsTypical = Tr("Typical rate {0}; fair range {1} (from {2} comparables).", "வழக்கமான விலை {0}; நியாய வரம்பு {1} ({2} ஒப்பீடுகளிலிருந்து).")
     val rsNearestMarket = Tr("Nearest market data: {0} ({1}) – {2} [{3}].", "அருகிலுள்ள சந்தைத் தகவல்: {0} ({1}) – {2} [{3}].")
     val rsFar = Tr("The nearest market data point is {0} km away – treat the estimate as rough.", "அருகிலுள்ள சந்தைத் தகவல் {0} கி.மீ. தொலைவில் உள்ளது – மதிப்பீட்டைத் தோராயமாகக் கொள்ளுங்கள்.")
-    val rsCityAverage = Tr("No nearby data: the Madurai-wide average for this type is used.", "அருகில் தகவல் இல்லை: இந்த வகைக்கான மதுரை சராசரி பயன்படுத்தப்படுகிறது.")
+    val rsCityAverage = Tr("City-wide averages are never used.", "நகர சராசரி ஒருபோதும் பயன்படுத்தப்படுவதில்லை.")
     val rsFallbackType = Tr("No exact data for this type nearby – an area average of mixed property types is used (low weight).", "அருகில் இந்த வகைக்கு நேரடித் தகவல் இல்லை – கலப்பு வகைகளின் பகுதி சராசரி பயன்படுத்தப்படுகிறது (குறைந்த முக்கியத்துவம்).")
     val rsOwn = Tr("{0} of your own listings of this type within {1} km are included.", "{1} கி.மீ.க்குள் உள்ள உங்கள் {0} அதே வகைப் பதிவுகள் சேர்க்கப்பட்டுள்ளன.")
     val rsNoOwn = Tr("None of your own listings of this type are nearby yet – adding more sharpens the check.", "அருகில் உங்கள் அதே வகைப் பதிவுகள் இன்னும் இல்லை – மேலும் சேர்த்தால் சரிபார்ப்பு துல்லியமாகும்.")
@@ -356,7 +358,7 @@ object S {
     val adviceBelowGuideline = Tr("Below the government floor value: be very careful – never pay an advance before a lawyer checks the documents.", "அரசு குறைந்தபட்ச மதிப்புக்குக் கீழே: மிகவும் கவனம் – வழக்கறிஞர் ஆவணங்களைச் சரிபார்க்கும் முன் முன்பணம் கொடுக்காதீர்கள்.")
 
     // Area rates
-    val areaSearchHint = Tr("Locality, e.g. Jaihindpuram or ஜெய்ஹிந்த்புரம்", "பகுதி, எ.கா. Jaihindpuram அல்லது ஜெய்ஹிந்த்புரம்")
+    val areaSearchHint = Tr("Any place, e.g. village, town or area (English or தமிழ்)", "எந்த இடமும், எ.கா. ஊர், நகரம், பகுதி (தமிழ் அல்லது English)")
     val findOnMap = Tr("Find “{0}” on the map", "“{0}” வரைபடத்தில் தேடு")
     val ratesIn = Tr("{1} in {0}", "{0} – {1}")
     val typicalRate = Tr("Typical market rate", "வழக்கமான சந்தை விலை")
@@ -429,7 +431,7 @@ object S {
     val newFolderHint = Tr("e.g. Shortlist", "எ.கா. தேர்ந்தெடுத்தவை")
     val renameFolder = Tr("Edit folder", "கோப்புறையைத் திருத்து")
     val folderName = Tr("Folder name", "கோப்புறைப் பெயர்")
-    val folderNameHint = Tr("e.g. Jaihindpuram plots, Shortlist", "எ.கா. ஜெய்ஹிந்த்புரம் மனைகள், தேர்ந்தெடுத்தவை")
+    val folderNameHint = Tr("e.g. Shortlist, Plots near the highway", "எ.கா. தேர்ந்தெடுத்தவை, நெடுஞ்சாலை அருகே மனைகள்")
     val addToFolder = Tr("Add properties", "சொத்துகளைச் சேர்")
     val addToFolderTitle = Tr("Properties in “{0}”", "“{0}” கோப்புறையில் உள்ள சொத்துகள்")
     val deleteFolderQ = Tr("Delete this folder?", "இந்தக் கோப்புறையை நீக்கவா?")
@@ -437,4 +439,86 @@ object S {
     val folderEmpty = Tr("Nothing here yet", "இங்கே இன்னும் எதுவும் இல்லை")
     val folderEmptyBody = Tr("Tap “Add properties”, or add a property to this folder from its detail screen.", "“சொத்துகளைச் சேர்” அழுத்துங்கள், அல்லது சொத்தின் விவரத் திரையிலிருந்து இந்தக் கோப்புறைக்குச் சேருங்கள்.")
     val sourceEmptyBody = Tr("Share a post from this app to Sothu Diary and it will appear here.", "இந்த ஆப்பிலிருந்து ஒரு பதிவை சொத்து டைரிக்குப் பகிர்ந்தால் இங்கே தோன்றும்.")
+
+    // ---- v2.1: location search ----
+    val searching = Tr("Searching…", "தேடுகிறது…")
+    val searchResults = Tr("Search results ({0}) – tap one", "தேடல் முடிவுகள் ({0}) – ஒன்றைத் தொடுங்கள்")
+
+    // ---- v2.1: reading Instagram / Facebook posts ----
+    val readPost = Tr("Read post (in-app)", "பதிவைப் படி (ஆப்பில்)")
+    val useThis = Tr("Use", "பயன்படுத்து")
+    val readerFound = Tr("Caption found · {0} comments", "விவரம் கிடைத்தது · {0} கருத்துகள்")
+    val readerLogin = Tr("Instagram / Facebook asks you to log in. Log in once below – the app remembers it – and the post is read automatically.", "இன்ஸ்டாகிராம் / ஃபேஸ்புக் உள்நுழையச் சொல்கிறது. கீழே ஒருமுறை உள்நுழையுங்கள் – ஆப் நினைவில் வைக்கும் – பிறகு பதிவு தானாகப் படிக்கப்படும்.")
+    val readerTimeout = Tr("Couldn't read the post automatically. Log in above, tap “Read now”, or paste the caption.", "பதிவைத் தானாகப் படிக்க முடியவில்லை. மேலே உள்நுழையுங்கள், “இப்போது படி” அழுத்துங்கள், அல்லது விவரத்தை ஒட்டுங்கள்.")
+    val readerLoading = Tr("Opening the post…", "பதிவைத் திறக்கிறது…")
+    val readNow = Tr("Read now", "இப்போது படி")
+    val pasteCaption = Tr("Paste caption", "விவரத்தை ஒட்டு")
+    val pasteCaptionHint = Tr("Copy the caption in Instagram / Facebook (long-press) and paste it here", "இன்ஸ்டாகிராம் / ஃபேஸ்புக்கில் விவரத்தை நகலெடுத்து (நீண்ட அழுத்தம்) இங்கே ஒட்டுங்கள்")
+    val usePasted = Tr("Use pasted text", "ஒட்டிய உரையைப் பயன்படுத்து")
+    val stepLink = Tr("Reading the post…", "பதிவைப் படிக்கிறது…")
+    val stepOcr = Tr("Reading text in the picture…", "படத்தில் உள்ள எழுத்துகளைப் படிக்கிறது…")
+    val stepImage = Tr("Saving the post picture…", "பதிவின் படத்தைச் சேமிக்கிறது…")
+    val stepLocating = Tr("Finding the place on the map…", "இடத்தை வரைபடத்தில் தேடுகிறது…")
+    val stepComments = Tr("Reading comments…", "கருத்துகளைப் படிக்கிறது…")
+    val readVia = Tr("Read via: {0}", "படித்த முறை: {0}")
+    val captionMissing = Tr("Instagram / Facebook didn't share the caption without a login. Tap “Read post” (log in once) or paste the caption below.", "உள்நுழையாமல் இன்ஸ்டாகிராம் / ஃபேஸ்புக் விவரத்தைத் தரவில்லை. “பதிவைப் படி” அழுத்துங்கள் (ஒருமுறை உள்நுழைய) அல்லது விவரத்தைக் கீழே ஒட்டுங்கள்.")
+    val postClaims = Tr("Claimed in the post", "பதிவில் கூறப்பட்டவை")
+    val claimsVerify = Tr("What the seller says – verify each with documents.", "விற்பவர் சொல்வது – ஒவ்வொன்றையும் ஆவணங்களுடன் சரிபாருங்கள்.")
+
+    // ---- v2.1: user reviews (comments) ----
+    val userReviews = Tr("User reviews / comments", "கருத்துகள் (பயனர் விமர்சனங்கள்)")
+    val refresh = Tr("Refresh", "புதுப்பி")
+    val reviewsLoading = Tr("Reading comments…", "கருத்துகளைப் படிக்கிறது…")
+    val noReviews = Tr("No comments read yet. Tap refresh (YouTube / Instagram) or read them in the app.", "இன்னும் கருத்துகள் இல்லை. புதுப்பி (யூடியூப் / இன்ஸ்டாகிராம்) அழுத்துங்கள் அல்லது ஆப்பில் படியுங்கள்.")
+    val noReviewsFound = Tr("No comments could be read", "கருத்துகளைப் படிக்க முடியவில்லை")
+    val readCommentsInApp = Tr("Read comments in the app (log in once)", "கருத்துகளை ஆப்பில் படி (ஒருமுறை உள்நுழைக)")
+    val reviewsNote = Tr("Comments are opinions of other viewers, not verified facts. Watch for warnings about disputes, water or road problems.", "கருத்துகள் மற்ற பார்வையாளர்களின் எண்ணங்கள், சரிபார்க்கப்பட்ட உண்மைகள் அல்ல. தகராறு, தண்ணீர், சாலை பிரச்சினை பற்றிய எச்சரிக்கைகளைக் கவனியுங்கள்.")
+    val fetchedOn = Tr("Read on {0}", "{0} அன்று படித்தது")
+
+    // ---- v2.1: price check near the property ----
+    val notEnoughNearby = Tr("Not enough data within 10 km", "10 கி.மீ.க்குள் போதுமான தகவல் இல்லை")
+    val notEnoughNearbyBody = Tr("No {0} rates were found within {1} km of this property, so no verdict is given. Rates from farther away or of other property types are never used.", "இந்தச் சொத்திலிருந்து {1} கி.மீ.க்குள் {0} விலைகள் கிடைக்கவில்லை, எனவே மதிப்பீடு தரப்படவில்லை. தொலைவான இடங்கள் அல்லது வேறு வகை விலைகள் ஒருபோதும் பயன்படுத்தப்படாது.")
+    val widenedTitle = Tr("Compared up to {0} km away", "{0} கி.மீ. வரை ஒப்பிடப்பட்டது")
+    val widenedBody = Tr("Fewer than 3 rates within 5 km, so places up to 10 km away are included. Treat this verdict as rough.", "5 கி.மீ.க்குள் 3-க்கும் குறைவான விலைகளே இருந்ததால் 10 கி.மீ. வரை சேர்க்கப்பட்டது. இந்த மதிப்பீட்டைத் தோராயமாகக் கொள்ளுங்கள்.")
+    val rsInsufficient = Tr("No {0} rates within {1} km of the pin – not enough data within 10 km for a verdict.", "பின்னிலிருந்து {1} கி.மீ.க்குள் {0} விலைகள் இல்லை – 10 கி.மீ.க்குள் மதிப்பீட்டுக்குப் போதுமான தகவல் இல்லை.")
+    val rsNoPin = Tr("This property has no map pin. The live price check works from the property’s own location – set it on the map.", "இந்தச் சொத்துக்கு வரைபடப் பின் இல்லை. நேரடி விலை சரிபார்ப்பு சொத்தின் இடத்திலிருந்தே செயல்படும் – வரைபடத்தில் இடத்தைக் குறியுங்கள்.")
+    val rsWidened = Tr("Only a few rates within {0} km, so places up to {1} km away are included – less reliable.", "{0} கி.மீ.க்குள் சில விலைகளே உள்ளன, எனவே {1} கி.மீ. வரையுள்ள இடங்கள் சேர்க்கப்பட்டன – நம்பகத்தன்மை குறைவு.")
+    val rsOtherDistrict = Tr("Includes nearby places in another district: {0}.", "அருகிலுள்ள வேறு மாவட்ட இடங்களும் உள்ளன: {0}.")
+    val rsOnline = Tr("{0} rate(s) from the live web lookup (asking prices; check the sources).", "நேரடி இணையத் தேடலில் கிடைத்த {0} விலை(கள்) (கேட்கும் விலைகள்; மூலங்களைச் சரிபாருங்கள்).")
+    val rsSameType = Tr("Only {0} rates are compared – other property types are never mixed in.", "{0} விலைகள் மட்டும் ஒப்பிடப்படுகின்றன – வேறு வகைச் சொத்துகள் கலக்கப்படுவதில்லை.")
+    val otherDistrictTag = Tr("{0} district", "{0} மாவட்டம்")
+    val findOnline = Tr("Check live rates", "நேரடி விலைகளைச் சரிபார்")
+    val findingOnline = Tr("Searching the web (up to a minute)…", "இணையத்தில் தேடுகிறது (ஒரு நிமிடம் வரை)…")
+    val onlineNeedPlace = Tr("Add the locality or a map pin first.", "முதலில் இடப் பெயரையோ வரைபடப் பின்னையோ சேர்க்கவும்.")
+    val geminiNeedKey = Tr("Add a Gemini API key first (Settings).", "முதலில் Gemini API key சேர்க்கவும் (அமைப்புகள்).")
+    val onlineError = Tr("Online search failed: {0}", "இணையத் தேடல் தோல்வி: {0}")
+    val onlineNone = Tr("No usable rates within 10 km were found online ({0} dropped: farther than 10 km or not placeable).", "10 கி.மீ.க்குள் பயன்படுத்தக்கூடிய விலைகள் இணையத்தில் கிடைக்கவில்லை ({0} விடப்பட்டன: 10 கி.மீ.க்கு மேல் / இடம் தெரியவில்லை).")
+    val onlineSaved = Tr("Found {0} rate(s) within 10 km – saved for 30 days. ({1} dropped as farther than 10 km / not placeable.)", "10 கி.மீ.க்குள் {0} விலை(கள்) கிடைத்தன – 30 நாட்களுக்குச் சேமிக்கப்பட்டன. ({1} 10 கி.மீ.க்கு மேல் / இடம் தெரியாததால் விடப்பட்டன.)")
+    val geminiKeyTitle = Tr("Gemini API key (free)", "Gemini API key (இலவசம்)")
+    val geminiKeyBody = Tr("The price check looks up current rates live, for the property’s own location and type: Google Gemini searches the web (listings and guideline values within 10 km) and the app keeps the results for 30 days with their sources. It needs a free Gemini API key – it stays on this phone.", "விலை சரிபார்ப்பு, சொத்தின் இடம் மற்றும் வகைக்கான தற்போதைய விலைகளை நேரடியாகத் தேடும்: Google Gemini இணையத்தில் (10 கி.மீ.க்குள் உள்ள விளம்பரங்கள், வழிகாட்டி மதிப்புகள்) தேடுகிறது, முடிவுகள் மூலங்களுடன் 30 நாட்கள் ஆப்பில் சேமிக்கப்படும். இதற்கு இலவச Gemini API key தேவை – அது இந்த ஃபோனிலேயே இருக்கும்.")
+    val getFreeKey = Tr("Get a free key (Google AI Studio)", "இலவச key பெறுக (Google AI Studio)")
+    val geminiKey = Tr("Gemini API key", "Gemini API key")
+    val geminiKeyHint = Tr("Needed for the live price check", "நேரடி விலை சரிபார்ப்புக்குத் தேவை")
+    val geminiModel = Tr("Gemini model", "Gemini மாடல்")
+    val youtubeKey = Tr("YouTube Data API key", "YouTube Data API key")
+    val youtubeKeyHint = Tr("Optional – more reliable YouTube comments and descriptions", "விருப்பத்திற்குரியது – யூடியூப் கருத்துகள், விவரங்கள் இன்னும் நம்பகமாக")
+    val onlineServices = Tr("Online services (optional)", "இணைய சேவைகள் (விருப்பத்திற்குரியவை)")
+    val onlineServicesBody = Tr("Keys stay on this phone and are only sent to Google when you use these features.", "Key-கள் இந்த ஃபோனிலேயே இருக்கும்; இந்த வசதிகளைப் பயன்படுத்தும்போது மட்டும் Google-க்கு அனுப்பப்படும்.")
+    val saved = Tr("Saved", "சேமிக்கப்பட்டது")
+    val onlineRatesSaved = Tr("Saved live lookups: {0} places, {1} rates", "சேமித்த நேரடித் தேடல்கள்: {0} இடங்கள், {1} விலைகள்")
+    val clearOnlineRates = Tr("Clear saved lookups", "சேமித்த தேடல்களை அழி")
+    val backupSubject = Tr("Sothu Diary backup", "சொத்து டைரி காப்புப்பிரதி")
+
+    // ---- v2.1: live price check ----
+    val setUpLiveCheck = Tr("Set up the live price check", "நேரடி விலை சரிபார்ப்பை அமையுங்கள்")
+    val needKeyForCheck = Tr("The price check needs a free Gemini key to look up rates near this property.", "இந்தச் சொத்தின் அருகிலுள்ள விலைகளைத் தேட இலவச Gemini key தேவை.")
+    val refreshLiveRates = Tr("Refresh live rates", "நேரடி விலைகளைப் புதுப்பி")
+    val lookupStatus = Tr("Live rates checked {0} · {1} found within 10 km of {2}", "நேரடி விலைகள் {0} அன்று சரிபார்க்கப்பட்டன · {2} இலிருந்து 10 கி.மீ.க்குள் {1} கிடைத்தன")
+    val lookupFailed = Tr("Live lookup on {0} failed: {1}", "{0} அன்று நேரடித் தேடல் தோல்வி: {1}")
+    val recentLookups = Tr("Recent live lookups", "சமீபத்திய நேரடித் தேடல்கள்")
+    val later = Tr("Later", "பிறகு")
+    val keyStep1 = Tr("Open aistudio.google.com/apikey (button below) and sign in with your Google account.", "கீழே உள்ள பொத்தானை அழுத்தி aistudio.google.com/apikey-ஐத் திறந்து, உங்கள் Google கணக்கில் உள்நுழையுங்கள்.")
+    val keyStep2 = Tr("Tap “Create API key” (accept the terms if asked). It is free.", "“Create API key” அழுத்துங்கள் (கேட்டால் விதிமுறைகளை ஏற்கவும்). இது இலவசம்.")
+    val keyStep3 = Tr("Copy the key (it starts with “AIza…”).", "Key-ஐ நகலெடுங்கள் (அது “AIza…” என்று தொடங்கும்).")
+    val keyStep4 = Tr("Come back, paste it below and tap Save.", "இங்கே திரும்பி வந்து கீழே ஒட்டி, “சேமி” அழுத்துங்கள்.")
 }

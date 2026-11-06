@@ -56,6 +56,78 @@ data class Property(
     /** User-made folders / collections this property is in. */
     val folderIds: Set<String> = emptySet(),
     val sample: Boolean = false,
+    /** v2.1: comments read from the source post ("User reviews"). */
+    val reviews: List<Review> = emptyList(),
+    val reviewsFetchedAt: Long = 0,
+    /** v2.1: claims found in the post text (keys of [com.hark.sothudiary.domain.PostClaim]) – to be verified. */
+    val postClaims: Set<String> = emptySet(),
+)
+
+/** A comment on the source post (YouTube / Instagram / Facebook), shown as a "user review". */
+@Serializable
+data class Review(
+    val author: String = "",
+    val text: String = "",
+    val likes: Long? = null,
+    /** As the site shows it, e.g. "2 weeks ago" or "2026-10-12". */
+    val date: String = "",
+    val source: SourcePlatform = SourcePlatform.OTHER,
+)
+
+/** Kind of an online rate: a listing's asking price or a government guideline value. */
+@Serializable
+enum class RateKind { ASKING, GUIDELINE }
+
+/**
+ * A market rate found online ("Find nearby rates online", Gemini + Google Search) and saved locally,
+ * so later price checks reuse it. [group]: 0 plot / land, 1 farmland / agri, 2 house, 3 apartment.
+ * Rates are rupees per [unit] ("sqft", "cent" or "acre").
+ */
+@Serializable
+data class OnlineRate(
+    val id: String,
+    val place: String,
+    val district: String = "",
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val group: Int,
+    val kind: RateKind = RateKind.ASKING,
+    val unit: String = "cent",
+    val min: Double? = null,
+    val max: Double? = null,
+    val typical: Double? = null,
+    val sourceName: String = "",
+    val sourceUrl: String = "",
+    /** Date of the listing / guideline as the source gives it. */
+    val asOf: String = "",
+    val fetchedAt: Long = 0,
+    val note: String = "",
+    /** Key of the live lookup (location + type) this rate came from; rates are replaced when it is refreshed. */
+    val lookupKey: String = "",
+    /** Distance from the looked-up point (km) when it was found. */
+    val distanceKm: Double? = null,
+)
+
+/**
+ * A live price lookup done for a location + property type (Gemini grounded search, cached locally).
+ * It is a cache, not a dataset: it is reused for [com.hark.sothudiary.domain.pricing.PriceRules.CACHE_DAYS] days.
+ */
+@Serializable
+data class RateLookup(
+    val key: String,
+    val lat: Double,
+    val lng: Double,
+    val group: Int,
+    /** Reverse-geocoded place, e.g. "Panpoli, Shenkottai taluk, Tenkasi district". */
+    val place: String = "",
+    val fetchedAt: Long = 0,
+    /** Comparables kept (within 10 km). */
+    val found: Int = 0,
+    /** Comparables the model returned that were dropped (beyond 10 km, unplaceable, no rate). */
+    val skipped: Int = 0,
+    val model: String = "",
+    val error: String? = null,
+    val sources: List<String> = emptyList(),
 )
 
 /** A user-made collection, e.g. "Shortlist" or "Jaihindpuram plots". */
@@ -135,6 +207,13 @@ data class AppSettings(
     val speechLang: Lang? = null,
     /** The welcome / onboarding card was dismissed. */
     val onboarded: Boolean = false,
+    /** Optional YouTube Data API v3 key – used for comments when set. */
+    val youtubeApiKey: String = "",
+    /** Optional Gemini API key (Google AI Studio) – "Find nearby rates online". */
+    val geminiApiKey: String = "",
+    val geminiModel: String = "gemini-2.5-flash",
+    /** The "set up live price check" card on Home was dismissed. */
+    val keyCardDismissed: Boolean = false,
 )
 
 @Serializable
@@ -146,4 +225,8 @@ data class AppData(
     val guidelines: List<GuidelineValue> = emptyList(),
     val folders: List<Folder> = emptyList(),
     val settings: AppSettings = AppSettings(),
+    /** v2.1: rates found online and saved for later price checks. */
+    val onlineRates: List<OnlineRate> = emptyList(),
+    /** v2.1: live price lookups (cache, per location + type). */
+    val rateLookups: List<RateLookup> = emptyList(),
 )

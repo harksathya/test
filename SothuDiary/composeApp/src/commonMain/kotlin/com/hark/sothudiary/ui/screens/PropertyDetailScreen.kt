@@ -78,6 +78,20 @@ import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.EmptyState
 import com.hark.sothudiary.ui.components.Pill
 import com.hark.sothudiary.ui.components.PriceCheckCard
+import com.hark.sothudiary.domain.formatDateShort
+import com.hark.sothudiary.ui.components.ReviewsSection
+import com.hark.sothudiary.ui.components.ClaimChips
+import com.hark.sothudiary.ui.components.GeminiKeyDialog
+import com.hark.sothudiary.ui.components.AI_STUDIO_URL
+import com.hark.sothudiary.ui.reader.PostReaderOverlay
+import com.hark.sothudiary.domain.social.fetchComments
+import com.hark.sothudiary.domain.social.platformOf
+import com.hark.sothudiary.domain.pricing.liveLookup
+import com.hark.sothudiary.domain.pricing.freshLookup
+import com.hark.sothudiary.domain.pricing.latestLookup
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.ui.components.WorthItCard
 import com.hark.sothudiary.ui.components.locationLine
@@ -123,6 +137,55 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
     val broker = p.brokerId?.let { bid -> data.brokers.firstOrNull { it.id == bid } }
     val timeline = data.interactions.filter { it.propertyId == p.id }.sortedByDescending { it.at }
     var confirmDelete by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var findingOnline by remember(p.id) { mutableStateOf(false) }
+    var onlineMessage by remember(p.id) { mutableStateOf<String?>(null) }
+    var askGeminiKey by remember { mutableStateOf(false) }
+    var loadingReviews by remember(p.id) { mutableStateOf(false) }
+    var readerOpen by remember { mutableStateOf(false) }
+    val msgNoReviews = S.noReviewsFound.of(lang)
+
+    val pLat = p.lat
+    val pLng = p.lng
+    val group = p.type.group()
+    val latest = if (pLat != null && pLng != null) latestLookup(data, pLat, pLng, group) else null
+
+    /** Live price lookup for this property's own coordinates and type (cached for 30 days). */
+    fun runLookup(force: Boolean) {
+        val key = data.settings.geminiApiKey
+        if (key.isBlank()) { if (force) askGeminiKey = true; return }
+        if (pLat == null || pLng == null) { onlineMessage = S.rsNoPin.of(lang); return }
+        if (!force && freshLookup(data, pLat, pLng, group) != null) return
+        if (findingOnline) return
+        findingOnline = true
+        onlineMessage = null
+        scope.launch {
+            val hint = listOf(p.locality, p.taluk, p.district).filter { it.isNotBlank() }.joinToString(", ").ifBlank { p.address }
+            val r = runCatching { liveLookup(key, data.settings.geminiModel, pLat, pLng, group, hint) }.getOrNull()
+            if (r != null) ctx.repo.saveLookup(r.lookup, r.rates)
+            onlineMessage = when {
+                r == null -> S.onlineError.format(lang, "network")
+                r.error == "no_key" -> S.geminiNeedKey.of(lang)
+                r.error != null -> S.onlineError.format(lang, r.error)
+                r.rates.isEmpty() -> S.onlineNone.format(lang, r.lookup.skipped)
+                else -> S.onlineSaved.format(lang, r.rates.size, r.lookup.skipped)
+            }
+            findingOnline = false
+        }
+    }
+
+    // Price check is a live lookup: run it when there is no recent one for this place + type.
+    LaunchedEffect(p.id, pLat, pLng, group, data.settings.geminiApiKey) { runLookup(force = false) }
+
+    fun refreshReviews() {
+        if (p.sourceUrl.isBlank()) return
+        loadingReviews = true
+        scope.launch {
+            val list = runCatching { fetchComments(p.sourceUrl, data.settings.youtubeApiKey) }.getOrDefault(emptyList())
+            if (list.isNotEmpty()) ctx.repo.setReviews(p.id, list) else ctx.platform.toast(msgNoReviews)
+            loadingReviews = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -209,8 +272,29 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 p, check,
                 onOpenProperty = { ctx.nav.push(Route.PropertyDetail(it)) },
                 onOpenUrl = { ctx.platform.openUrl(it) },
-                onAreaRates = { ctx.nav.push(Route.AreaRates(p.locality.ifBlank { null }, p.type.group())) },
+                onAreaRates = { ctx.nav.push(Route.AreaRates(p.id, p.type.group())) },
+                onFindOnline = { runLookup(force = true) },
+                findingOnline = findingOnline,
+                onlineMessage = onlineMessage,
+                lookupStatus = latest?.let { l ->
+                    if (l.error != null) S.lookupFailed.format(lang, formatDateShort(l.fetchedAt, lang), l.error)
+                    else S.lookupStatus.format(lang, formatDateShort(l.fetchedAt, lang), l.found, l.place.ifBlank { "—" })
+                },
+                needsKey = data.settings.geminiApiKey.isBlank(),
+                onSetupKey = { askGeminiKey = true },
             )
+
+            // ---- User reviews (comments on the source post) ----
+            if (p.sourceUrl.isNotBlank() || p.reviews.isNotEmpty()) {
+                val plat = platformOf(p.sourceUrl)
+                ReviewsSection(
+                    reviews = p.reviews,
+                    loading = loadingReviews,
+                    fetchedLabel = if (p.reviewsFetchedAt > 0) S.fetchedOn.f(formatDateShort(p.reviewsFetchedAt, lang)) else null,
+                    onRefresh = if (plat == SourcePlatform.YOUTUBE || plat == SourcePlatform.INSTAGRAM) ({ refreshReviews() }) else null,
+                    onReadInApp = if ((plat == SourcePlatform.INSTAGRAM || plat == SourcePlatform.FACEBOOK) && ctx.platform.hasWebReader) ({ readerOpen = true }) else null,
+                )
+            }
 
             // ---- Folders ----
             SectionCard(title = S.folders.s(), icon = Icons.Filled.Folder) {
@@ -273,6 +357,11 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                     Spacer(Modifier.height(6.dp))
                     Text("“" + p.sourceCaption + "”", style = MaterialTheme.typography.bodyMedium)
                 }
+                if (p.postClaims.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(S.postClaims.s(), style = MaterialTheme.typography.labelLarge)
+                    ClaimChips(p.postClaims)
+                }
             }
 
             // ---- Documents ----
@@ -334,6 +423,30 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             }
             Spacer(Modifier.height(80.dp))
         }
+    }
+
+    if (readerOpen) {
+        PostReaderOverlay(
+            url = p.sourceUrl,
+            onResult = { post ->
+                readerOpen = false
+                if (post.comments.isNotEmpty()) ctx.repo.setReviews(p.id, (post.comments + p.reviews).distinctBy { it.author + it.text.take(60) }.take(15))
+                else ctx.platform.toast(msgNoReviews)
+            },
+            onDismiss = { readerOpen = false },
+        )
+    }
+
+    if (askGeminiKey) {
+        GeminiKeyDialog(
+            current = data.settings.geminiApiKey,
+            onDismiss = { askGeminiKey = false },
+            onSave = { k ->
+                ctx.repo.setApiKeys(data.settings.youtubeApiKey, k, data.settings.geminiModel)
+                askGeminiKey = false
+            },
+            onOpenStudio = { ctx.platform.openUrl(AI_STUDIO_URL) },
+        )
     }
 
     if (confirmDelete) {

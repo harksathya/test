@@ -32,6 +32,18 @@ object AndroidImages {
         } else out.name
     }.getOrNull()
 
+    /** Saves downloaded image bytes (e.g. a post thumbnail – CDN links expire) into app storage. */
+    fun saveBytes(context: Context, bytes: ByteArray, ext: String): String? = runCatching {
+        if (bytes.size < 200) return null
+        // Only keep real images.
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0) return null
+        val out = File(dir(context), "post_" + System.currentTimeMillis() + "_" + (0..999).random() + "." + ext.ifBlank { "jpg" })
+        out.writeBytes(bytes)
+        out.name
+    }.getOrNull()
+
     fun recognize(context: Context, fileName: String, onResult: (String?) -> Unit) {
         val main = Handler(Looper.getMainLooper())
         val f = File(dir(context), fileName)
