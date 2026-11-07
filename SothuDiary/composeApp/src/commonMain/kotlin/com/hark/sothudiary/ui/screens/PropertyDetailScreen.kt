@@ -312,6 +312,9 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 onSetupKey = { askGeminiKey = true },
             )
 
+            // ---- 2.3.1: Government guideline value (TNREGINET) and stamp duty / registration fee ----
+            GuidelineDutyCard(ctx, p)
+
             // ---- 2.2.0: Land check (water buffer, roads, locality, utilities, zoning, growth) ----
             LandCheckCard(ctx, p)
 

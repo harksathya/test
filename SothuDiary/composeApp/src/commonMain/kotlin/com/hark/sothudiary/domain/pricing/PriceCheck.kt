@@ -343,8 +343,10 @@ fun guidelineAt(point: AreaPoint, group: Int, data: AppData, now: Long = com.har
 fun checkPrice(p: Property, data: AppData): PriceCheck {
     val basis = p.type.basis()
     val unit = p.unitPrice()
-    val est = estimateMarket(p.areaPoint(), p.type.group(), data, excludePropertyId = p.id,
+    val est0 = estimateMarket(p.areaPoint(), p.type.group(), data, excludePropertyId = p.id,
         selfRate = unit?.let { convertRate(it, basis, groupBasis(p.type.group())) }, selfUrl = p.sourceUrl)
+    // 2.3.1: this property's own guideline value (read on TNREGINET or typed by the user) beats an area value.
+    val est = com.hark.sothudiary.domain.registry.ownGuidelineInfo(p, est0.basis)?.let { est0.copy(guideline = it) } ?: est0
     val gv = est.guideline?.value
     val med = est.median
     val ratio = if (unit != null && med != null && med > 0) unit / med else null

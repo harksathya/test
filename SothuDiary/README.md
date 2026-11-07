@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.3.0
+# Sothu Diary (சொத்து டைரி) – v2.3.1
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -6,6 +6,36 @@ the documents you have verified – and get a detailed, explainable **price chec
 rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-tap **த / EN**).
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
+
+## What's new in v2.3.1
+
+- **Guideline value & stamp duty / வழிகாட்டி மதிப்பு & முத்திரைத் தீர்வை** (property detail, right after the price check).
+  - **Official guideline value from TNREGINET, read in the app.** *Look up on TNREGINET* opens the portal's Guideline
+    search (tnreginet.gov.in, English page) in an in-app page and fills district → SRO → village → street / survey
+    number one step at a time with the page's own lists (it never presses Submit and never changes a choice you made).
+    After you search, *Read value* lists the rows on the page that carry a value; tap the one for your property (or
+    long-press → copy → paste). The value is saved with its unit (₹ per sq ft / sq m / cent / acre / hectare), the page
+    address, the date you saved it and the "in force from" date if you type it. A value you type yourself is labelled
+    *Entered by you – check it on TNREGINET*. Nothing is ever estimated or invented; there is no AI lookup for it.
+  - Why not a direct download: the guideline search is a JavaScript form whose lists load by AJAX (POST /portal/webHP with
+    the session's cookies / CSRF token), the result is drawn in the page, a captcha guards other searches on the same
+    page and there is no public API (the site also did not answer from our build servers outside India). Reading it in your own session on
+    the real page is the reliable, honest route. Desktop opens the site in the browser and you type the value.
+  - **Place details**: district, Sub-Registrar Office, village, street and survey number are saved with the property
+    (district and village are filled from the map address – please check; the survey number is the one from the land check).
+  - **Sale deed calculator**: guideline value × area, the market (asking) price, the gap between them in %, the value duty
+    is charged on (the higher of the two), stamp duty 7 %, registration fee 2 % and the total, in ₹ with lakh / crore.
+    A price below the guideline value is flagged (registered at the guideline value; under-valuation, Stamp Act s.47A).
+    Houses / flats: optional land area (plot or UDS) – the building value (PWD rates) is not included and the card says so.
+    *All buyers are women* applies the 1 % registration-fee concession up to ₹10 lakh (G.O. Ms. No.77, CT&R, 29.03.2025).
+  - **Rates are settings** (card → *Edit rates*, or Settings): defaults 7 % stamp duty and 2 % registration fee for a TN
+    sale deed – 2 % since 01.04.2023 by G.O.(Ms.) No.34, CT&R (J2), 30.03.2023 (TN Single Window Portal fee structure,
+    cross-verified with TNREGINET). Sources are cited in `domain/registry/StampDuty.kt`.
+  - The price check uses this property's own guideline value (plots, land, farmland) ahead of an area value.
+- Data: new optional fields with defaults (`Property.registry` – district, SRO, village, street, guideline value with
+  source / date, land area, women buyers; `AppSettings.stampDutyPct`, `registrationFeePct`) – older files load unchanged.
+- Limits: the in-app form filling follows the portal's 2026 page (ids districtList / SROList / villageList / streetName /
+  surveyName); if the portal changes, fill the form by hand – reading and saving the value still works.
 
 ## What's new in v2.3.0
 

@@ -273,6 +273,16 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
         d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(surveyNumber = com.hark.sothudiary.domain.land.normalizeSurveyNumber(survey).take(40), updatedAt = nowMillis()) else it })
     }
 
+    /** 2.3.1: TNREGINET place / guideline value / land area of a property. */
+    fun setRegistry(propertyId: String, registry: RegistryInfo) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(registry = registry, updatedAt = nowMillis()) else it })
+    }
+
+    /** 2.3.1: stamp duty and registration fee rates (percent). */
+    fun setDutyRates(stampPct: Double, regPct: Double) = update { d ->
+        d.copy(settings = d.settings.copy(stampDutyPct = stampPct, registrationFeePct = regPct))
+    }
+
     /** 2.3.0: saves (or removes, null) the FMB sketch laid over the map. */
     fun setSketch(propertyId: String, sketch: SketchOverlay?) = update { d ->
         d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(sketch = sketch) else it })

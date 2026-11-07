@@ -123,6 +123,14 @@ class ScreenshotTest {
         shot("detail_plot", Lang.EN, ThemeMode.LIGHT, h = 3000) { PropertyDetailScreen(it, "p1") }
         shot("detail_suspicious_ta", Lang.TA, ThemeMode.LIGHT, h = 2600) { PropertyDetailScreen(it, "p4") }
         shot("detail_farm", Lang.EN, ThemeMode.DARK, h = 2600) { PropertyDetailScreen(it, "p3") }
+        // 2.3.1: a guideline value read on TNREGINET (the plot is priced below it) – card, calculator and price check.
+        shot("detail_guideline_ta", Lang.TA, ThemeMode.LIGHT, h = 3400) {
+            androidx.compose.runtime.remember {
+                it.repo.setRegistry("p4", com.hark.sothudiary.data.RegistryInfo(district = "Madurai", sro = "Madurai South", village = "Vilangudi",
+                    guideline = com.hark.sothudiary.data.OfficialGuideline(650.0, com.hark.sothudiary.data.GvUnit.SQFT, "tnreginet.gov.in", "https://tnreginet.gov.in/portal/", nowMillis(), "01-07-2024", com.hark.sothudiary.data.OfficialGuideline.METHOD_WEBVIEW)))
+            }
+            PropertyDetailScreen(it, "p4")
+        }
         shot("area_rates", Lang.EN, ThemeMode.LIGHT, h = 2400) { AreaRatesScreen(it, "p1", 0, null) }
         shot("edit_share", Lang.EN, ThemeMode.LIGHT, h = 2400) {
             PropertyEditScreen(it, Route.PropertyEdit(null, "", "5 cents DTCP plot near Jaihindpuram Madurai\nPrice ₹25 lakhs. Call 9443012345"))

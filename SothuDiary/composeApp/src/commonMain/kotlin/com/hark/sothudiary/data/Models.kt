@@ -71,6 +71,54 @@ data class Property(
     val sketch: SketchOverlay? = null,
     /** 2.3.0: when this property was imported from a shared link (epoch ms), else 0. */
     val importedAt: Long = 0,
+    /** 2.3.1: registration details – TNREGINET place (district / SRO / village / street) and the official guideline value. */
+    val registry: RegistryInfo = RegistryInfo(),
+)
+
+/** 2.3.1: unit a guideline value is quoted in (TNREGINET uses ₹ per sq ft / sq m for streets, per hectare for survey numbers). */
+@Serializable
+enum class GvUnit { SQFT, SQM, CENT, ACRE, HECTARE }
+
+/**
+ * 2.3.1: a guideline value for one property, always with where it came from and when. Never invented: it is what the user
+ * read on tnreginet.gov.in (in-app page, [METHOD_WEBVIEW]) or typed themselves ([METHOD_MANUAL]).
+ */
+@Serializable
+data class OfficialGuideline(
+    /** Rupees per [unit]. */
+    val value: Double,
+    val unit: GvUnit = GvUnit.SQFT,
+    /** "tnreginet.gov.in" for a value read on the portal; blank when typed by the user. */
+    val source: String = "",
+    /** The page the value was read on. */
+    val sourceUrl: String = "",
+    /** When it was saved (epoch ms). */
+    val capturedAt: Long = 0,
+    /** "In force from" date as the portal shows it, e.g. "01-07-2024" (optional). */
+    val effectiveFrom: String = "",
+    val method: String = METHOD_MANUAL,
+    /** The row / text the value was read from. */
+    val rawText: String = "",
+) {
+    companion object {
+        const val METHOD_WEBVIEW = "webview"
+        const val METHOD_MANUAL = "manual"
+    }
+}
+
+/** 2.3.1: what the registration office needs for this property, entered by the user or filled from the map address. */
+@Serializable
+data class RegistryInfo(
+    val district: String = "",
+    /** Sub-Registrar Office (சார்பதிவாளர் அலுவலகம்). */
+    val sro: String = "",
+    val village: String = "",
+    val street: String = "",
+    val guideline: OfficialGuideline? = null,
+    /** Land area the guideline applies to when it differs from the stated size (house plot, UDS of a flat), sq ft. */
+    val landAreaSqft: Double? = null,
+    /** Every buyer is a woman (registration fee concession up to ₹10 lakh, G.O. Ms. No.77 / 2025). */
+    val womenBuyers: Boolean = false,
 )
 
 /**
@@ -271,6 +319,9 @@ data class AppSettings(
     val bgmVolume: Float = 0.12f,
     /** The user's own song, copied into app storage; blank = the bundled default track. */
     val bgmFile: String = "",
+    /** 2.3.1: Tamil Nadu sale deed rates (editable; see domain/registry/StampDuty.kt for the source). */
+    val stampDutyPct: Double = 7.0,
+    val registrationFeePct: Double = 2.0,
 )
 
 @Serializable

@@ -51,8 +51,9 @@ import com.hark.sothudiary.ui.AppContext
 import com.hark.sothudiary.ui.components.AppTopBar
 import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
+import com.hark.sothudiary.domain.dec
 
-const val APP_VERSION = "2.1.2"
+const val APP_VERSION = "2.3.1"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -180,6 +181,14 @@ fun SettingsScreen(ctx: AppContext) {
                         TextButton(onClick = { ctx.repo.clearLandChecks() }) { Text(S.clearLandChecks.s()) }
                     }
                 }
+            }
+
+            // 2.3.1: Tamil Nadu sale deed rates used by the stamp duty calculator.
+            SectionCard(title = S.dutyRatesTitle.s()) {
+                var editRates by remember { mutableStateOf(false) }
+                Text(S.dutyRatesLine.f(dec(data.settings.stampDutyPct, 2), dec(data.settings.registrationFeePct, 2)), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { editRates = true }) { Text(S.dutyEditRates.s()) }
+                if (editRates) DutyRatesDialog(ctx) { editRates = false }
             }
 
             SectionCard(title = S.howPriceCheckWorks.s()) {

@@ -151,7 +151,8 @@ fun reasoningLines(est: MarketEstimate, check: PriceCheck?): List<String> {
     val g = est.guideline
     if (g != null) {
         val gText = rateText(g.value, b, lang)
-        lines += if (g.fromUser) S.rsGuidelineUser.f(gText, g.label) else S.rsGuidelineData.f(gText, g.label, g.asOf)
+        lines += if (g.fromUser && g.sourceName == com.hark.sothudiary.domain.registry.DutyRules.SOURCE_NAME) S.rsGuidelineOfficial.f(gText, g.label)
+        else if (g.fromUser) S.rsGuidelineUser.f(gText, g.label) else S.rsGuidelineData.f(gText, g.label, g.asOf)
         if (check != null && unit != null) {
             if (check.belowGuideline) lines += S.explainBelowGuideline.s()
             else lines += S.rsTimesGuideline.f(dec(unit / g.value, 1))
