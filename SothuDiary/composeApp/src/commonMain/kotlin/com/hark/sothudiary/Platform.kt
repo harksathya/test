@@ -165,7 +165,7 @@ expect suspend fun httpRequest(
 /** Downloads a file (e.g. a post thumbnail). Null on errors. */
 expect suspend fun httpBytes(url: String, userAgent: String, maxBytes: Int = 8_000_000): ByteArray?
 
-const val APP_USER_AGENT = "SothuDiary/2.1 (com.hark.sothudiary; personal property diary app)"
+const val APP_USER_AGENT = "SothuDiary/2.2 (com.hark.sothudiary; personal property diary app)"
 
 // Speech-to-text error codes passed to AudioActions.startSpeech(onError).
 const val SPEECH_PERMISSION = "permission"

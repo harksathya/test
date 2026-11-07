@@ -32,6 +32,8 @@ jobs:
           name: SothuDiary-debug-apk
           path: SothuDiary/SothuDiary.apk
       - name: Publish to the "sothu-diary-latest" release
+        # Only builds of main replace the live APK; branch builds (workflow_dispatch) just upload the artifact.
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: sothu-diary-latest

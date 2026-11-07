@@ -217,30 +217,24 @@ internal fun legacyRetrievalModels(ids: List<String>): List<String> =
     ids.filter { it.startsWith("gemini-1.5-flash") || it.startsWith("gemini-1.0") || it.startsWith("gemini-1.5-pro") }
         .sortedBy { if ("flash" in it) 0 else 1 }
 
+/** Outcome of a grounded Gemini call ([groundedGenerate]). */
+sealed class Grounded {
+    /** [model] is the model that answered ("… (search retrieval)" for the older grounding tool). */
+    data class Ok(val text: String, val sources: List<String>, val model: String) : Grounded()
+    /** [error] is "no_key", "network", "failed" or a tagged error ([taggedError]); [model] the first model tried. */
+    data class Failed(val error: String, val retryAt: Long, val model: String) : Grounded()
+}
+
 /**
- * Live price lookup for a location + type (always for the property's own coordinates):
- * reverse-geocodes the point, asks Gemini with Google Search grounding for same-type comparables within 10 km,
- * places every comparable on the map (Nominatim near the point; the model's coordinates only as a fallback),
- * and keeps only those within [PriceRules.MAX_KM] km by computed distance.
+ * One grounded Gemini call (Google Search) with the app's model fallback – shared by the live price check and the
+ * 2.2.0 land check.
  *
  * Models: the user's chosen model (if any), then the last one that worked, then what the key can use – stable Flash,
  * then Flash-Lite, then previews. A model out of (free-tier) quota is skipped and remembered for about an hour, so a
  * Refresh does not hammer it. Every call is grounded with Google Search; there is never an ungrounded call.
  */
-suspend fun liveLookup(
-    apiKey: String,
-    model: String,
-    lat: Double,
-    lng: Double,
-    group: Int,
-    placeHint: String,
-): LiveLookupResult {
-    val key = lookupKey(lat, lng, group)
-    val now = nowMillis()
-    if (apiKey.isBlank()) return LiveLookupResult(RateLookup(key, lat, lng, group, placeHint, now, error = "no_key"), emptyList(), "no_key")
-    val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
-    val place = describePlace(rev, placeHint)
-    val prompt = buildLivePrompt(place, lat, lng, group)
+suspend fun groundedGenerate(apiKey: String, model: String, prompt: String, now: Long = nowMillis()): Grounded {
+    if (apiKey.isBlank()) return Grounded.Failed("no_key", 0L, "auto")
     val body = requestBody(prompt, legacyRetrieval = false)
     val models = mutableListOf<String>()
     com.hark.sothudiary.data.normalizeGeminiModel(model).takeIf { it != "auto" }?.let { models += it }
@@ -254,7 +248,7 @@ suspend fun liveLookup(
     val skippedForQuota = mutableListOf<String>()
     var i = 0
 
-    suspend fun attempt(m: String, legacy: Boolean): LiveLookupResult? {
+    suspend fun attempt(m: String, legacy: Boolean): Grounded.Ok? {
         when (val res = callGemini(apiKey, m, if (legacy) requestBody(prompt, true) else body)) {
             is CallResult.Offline -> { offline = true; return null }
             is CallResult.Fail -> {
@@ -273,9 +267,7 @@ suspend fun liveLookup(
             }
             is CallResult.Ok -> {
                 cachedBestModel = m
-                val (out, skipped) = placeComparables(res.text, res.sources, lat, lng, group, rev, key, now)
-                val label = if (legacy) "$m (search retrieval)" else m
-                return LiveLookupResult(RateLookup(key, lat, lng, group, place, now, out.size, skipped, label, null, res.sources.take(12)), out)
+                return Grounded.Ok(res.text, res.sources, if (legacy) "$m (search retrieval)" else m)
             }
         }
     }
@@ -323,10 +315,39 @@ suspend fun liveLookup(
         retryDelay != null -> now + retryDelay!! * 1000L
         else -> 0L
     }
-    return LiveLookupResult(
-        RateLookup(key, lat, lng, group, place, now, model = models.firstOrNull() ?: "auto", error = err, retryAt = retryAt),
-        emptyList(), err,
-    )
+    return Grounded.Failed(err, retryAt, models.firstOrNull() ?: "auto")
+}
+
+/**
+ * Live price lookup for a location + type (always for the property's own coordinates):
+ * reverse-geocodes the point, asks Gemini with Google Search grounding for same-type comparables within 10 km,
+ * places every comparable on the map (Nominatim near the point; the model's coordinates only as a fallback),
+ * and keeps only those within [PriceRules.MAX_KM] km by computed distance. Model fallback: [groundedGenerate].
+ */
+suspend fun liveLookup(
+    apiKey: String,
+    model: String,
+    lat: Double,
+    lng: Double,
+    group: Int,
+    placeHint: String,
+): LiveLookupResult {
+    val key = lookupKey(lat, lng, group)
+    val now = nowMillis()
+    if (apiKey.isBlank()) return LiveLookupResult(RateLookup(key, lat, lng, group, placeHint, now, error = "no_key"), emptyList(), "no_key")
+    val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
+    val place = describePlace(rev, placeHint)
+    val prompt = buildLivePrompt(place, lat, lng, group)
+    return when (val g = groundedGenerate(apiKey, model, prompt, now)) {
+        is Grounded.Ok -> {
+            val (out, skipped) = placeComparables(g.text, g.sources, lat, lng, group, rev, key, now)
+            LiveLookupResult(RateLookup(key, lat, lng, group, place, now, out.size, skipped, g.model, null, g.sources.take(12)), out)
+        }
+        is Grounded.Failed -> LiveLookupResult(
+            RateLookup(key, lat, lng, group, place, now, model = g.model, error = g.error, retryAt = g.retryAt),
+            emptyList(), g.error,
+        )
+    }
 }
 
 /** Turns the model's JSON into comparables placed on the map within 10 km. Returns (kept, dropped count). */

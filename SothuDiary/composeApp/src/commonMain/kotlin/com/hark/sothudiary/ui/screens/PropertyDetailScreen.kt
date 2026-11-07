@@ -141,7 +141,8 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
     val checks = remember(data) { checkAll(data) }
     val check = checks[p.id] ?: return
     val now = nowMillis()
-    val worth = worthIt(p, check, data, checks, now)
+    // 2.2.0: a land check made for the current pin / outline adds its water-risk reason; without one nothing changes.
+    val worth = worthIt(p, check, data, checks, now, land = currentLandAssessment(ctx, p)?.second)
     val broker = p.brokerId?.let { bid -> data.brokers.firstOrNull { it.id == bid } }
     val timeline = data.interactions.filter { it.propertyId == p.id }.sortedByDescending { it.at }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -305,6 +306,9 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 needsKey = data.settings.geminiApiKey.isBlank(),
                 onSetupKey = { askGeminiKey = true },
             )
+
+            // ---- 2.2.0: Land check (water buffer, roads, locality, utilities, zoning, growth) ----
+            LandCheckCard(ctx, p)
 
             // ---- User reviews (comments on the source post) ----
             if (p.sourceUrl.isNotBlank() || p.reviews.isNotEmpty()) {

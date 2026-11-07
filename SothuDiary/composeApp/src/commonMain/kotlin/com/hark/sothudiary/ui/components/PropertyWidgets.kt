@@ -122,6 +122,7 @@ fun reasonText(r: Reason): String {
         ReasonCode.PRICE_REDUCED -> S.rReduced.f(r.pct?.let { pctText(it) } ?: "")
         ReasonCode.BROKER_FLAGGED -> S.rBrokerFlagged.f(r.count ?: 0)
         ReasonCode.FOLLOWUPS_OVERDUE -> S.rOverdue.f(r.count ?: 0)
+        ReasonCode.LAND_RISK_HIGH -> S.rLandRisk.f(com.hark.sothudiary.domain.land.pct0(r.pct ?: 0.0))
     }
 }
 

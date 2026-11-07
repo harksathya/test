@@ -105,6 +105,7 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
         d.copy(
             properties = d.properties.filterNot { it.id == id },
             interactions = d.interactions.filterNot { it.propertyId == id },
+            landChecks = d.landChecks.filterNot { it.propertyId == id },
         )
     }
 
@@ -254,6 +255,18 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
             onlineRates = d.onlineRates.filterNot { it.lookupKey == lookup.key } + rates,
         )
     }
+
+    /** 2.2.0: saves the plot corners drawn on the map (empty = remove them). */
+    fun setBoundary(propertyId: String, corners: List<GeoPt>) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(boundary = corners, updatedAt = nowMillis()) else it })
+    }
+
+    /** 2.2.0: stores the land check of a property (one per property, the newest replaces the older). */
+    fun saveLandCheck(check: LandCheck) = update { d ->
+        d.copy(landChecks = d.landChecks.filterNot { it.propertyId == check.propertyId } + check)
+    }
+
+    fun clearLandChecks() = update { d -> d.copy(landChecks = emptyList()) }
 
     fun clearLookups() = update { d -> d.copy(rateLookups = emptyList(), onlineRates = emptyList()) }
 

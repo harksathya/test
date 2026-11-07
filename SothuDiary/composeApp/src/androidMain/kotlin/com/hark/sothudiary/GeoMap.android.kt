@@ -22,6 +22,8 @@ import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
+import org.osmdroid.views.overlay.Polyline
 import java.io.File
 
 actual val platformHasMap: Boolean = true
@@ -49,6 +51,7 @@ private class MapHolder {
     var onPinDragged: ((String, Double, Double) -> Unit)? = null
     var onPinClick: ((String) -> Unit)? = null
     var pinsSignature: List<MapPin>? = null
+    var shapesSignature: List<MapShape>? = null
 }
 
 private val pinCache = HashMap<String, Drawable>()
@@ -93,6 +96,7 @@ actual fun GeoMap(
     onPinDragged: ((String, Double, Double) -> Unit)?,
     onPinClick: ((String) -> Unit)?,
     fitAroundCenter: Boolean,
+    shapes: List<MapShape>,
 ) {
     // Never place or fit anything at an invalid coordinate (NaN, out of range, or 0,0).
     @Suppress("NAME_SHADOWING")
@@ -135,6 +139,32 @@ actual fun GeoMap(
             }
         },
         update = { map ->
+            if (holder.shapesSignature != shapes) {
+                holder.shapesSignature = shapes
+                map.overlays.removeAll { it is Polygon || it is Polyline }
+                val density = map.context.resources.displayMetrics.density
+                // Added at the bottom (index 0): drawn under the pins, and the tap overlay above them still gets every tap.
+                shapes.asReversed().forEach { sh ->
+                    val pts = sh.points.filter { isValidCoord(it.first, it.second) }.map { GeoPoint(it.first, it.second) }
+                    if (pts.size < 2) return@forEach
+                    if (sh.closed && pts.size >= 3) {
+                        val poly = Polygon()
+                        poly.setPoints(pts)
+                        poly.fillPaint.color = sh.fill.toInt()
+                        poly.outlinePaint.color = sh.stroke.toInt()
+                        poly.outlinePaint.strokeWidth = sh.widthDp * density
+                        poly.setOnClickListener { _, _, _ -> false }
+                        map.overlays.add(0, poly)
+                    } else {
+                        val line = Polyline()
+                        line.setPoints(pts)
+                        line.outlinePaint.color = sh.stroke.toInt()
+                        line.outlinePaint.strokeWidth = sh.widthDp * density
+                        line.setOnClickListener { _, _, _ -> false }
+                        map.overlays.add(0, line)
+                    }
+                }
+            }
             if (holder.pinsSignature != pins) {
                 holder.pinsSignature = pins
                 map.overlays.removeAll { it is Marker }

@@ -59,6 +59,7 @@ import com.hark.sothudiary.ui.Route
 import com.hark.sothudiary.ui.Tab
 import com.hark.sothudiary.ui.components.EmptyState
 import com.hark.sothudiary.ui.screens.BrokerDetailScreen
+import com.hark.sothudiary.ui.screens.LandCheckScreen
 import com.hark.sothudiary.ui.screens.BrokerEditScreen
 import com.hark.sothudiary.ui.screens.BrokerListScreen
 import com.hark.sothudiary.ui.screens.FollowUpsScreen
@@ -288,5 +289,6 @@ private fun RouteScreen(ctx: AppContext, r: Route) {
         is Route.InteractionEdit -> InteractionEditScreen(ctx, r)
         is Route.FolderView -> FolderViewScreen(ctx, r)
         is Route.AreaRates -> AreaRatesScreen(ctx, r.propertyId, r.group, onBack = { ctx.nav.pop() })
+        is Route.LandCheck -> LandCheckScreen(ctx, r.propertyId)
     }
 }

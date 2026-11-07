@@ -388,6 +388,8 @@ enum class ReasonCode {
     DOCS_MISSING, DOCS_OK,
     PRICE_RAISED, PRICE_REDUCED,
     BROKER_FLAGGED, FOLLOWUPS_OVERDUE,
+    /** 2.2.0: the land check found the plot on / in the buffer of a water body (only with a land check). */
+    LAND_RISK_HIGH,
 }
 
 data class Reason(
@@ -408,7 +410,14 @@ fun keyDocs(type: PropertyType): List<DocItem> = buildList {
     if (type == PropertyType.FARMLAND || type == PropertyType.AGRI_LAND) add(DocItem.CHITTA)
 }
 
-fun worthIt(p: Property, check: PriceCheck, data: AppData, allChecks: Map<String, PriceCheck>, now: Long): WorthIt {
+/**
+ * [land]: the property's land check (2.2.0), when one was made. Without it the suggestion is exactly as before;
+ * with a HIGH water / flood-buffer risk it adds one HOLD reason.
+ */
+fun worthIt(
+    p: Property, check: PriceCheck, data: AppData, allChecks: Map<String, PriceCheck>, now: Long,
+    land: com.hark.sothudiary.domain.land.LandAssessment? = null,
+): WorthIt {
     val reasons = mutableListOf<Reason>()
 
     when (p.status) {
@@ -450,6 +459,10 @@ fun worthIt(p: Property, check: PriceCheck, data: AppData, allChecks: Map<String
         it.propertyId == p.id && !it.followUpDone && it.followUpAt != null && it.followUpAt < now
     }
     if (overdue > 0) reasons += Reason(ReasonCode.FOLLOWUPS_OVERDUE, Advice.HOLD, count = overdue)
+
+    if (land != null && land.banner.level == com.hark.sothudiary.domain.land.LandRating.POOR) {
+        reasons += Reason(ReasonCode.LAND_RISK_HIGH, Advice.HOLD, pct = maxOf(land.banner.bufferPct, 0.0))
+    }
 
     val advice = when {
         p.status == DealStatus.BOUGHT -> Advice.GO

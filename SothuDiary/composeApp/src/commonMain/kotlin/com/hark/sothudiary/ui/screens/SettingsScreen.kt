@@ -175,6 +175,10 @@ fun SettingsScreen(ctx: AppContext) {
                     if (data.rateLookups.isNotEmpty()) {
                         TextButton(onClick = { ctx.repo.clearLookups() }) { Text(S.clearOnlineRates.s()) }
                     }
+                    if (data.landChecks.isNotEmpty()) {
+                        Text(S.landChecksSaved.f(data.landChecks.size), style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = { ctx.repo.clearLandChecks() }) { Text(S.clearLandChecks.s()) }
+                    }
                 }
             }
 

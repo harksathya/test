@@ -38,14 +38,14 @@ fun waitText(ms: Long, lang: Lang): String {
 }
 
 /** The short friendly message for a stored lookup error, in [lang]. */
-fun lookupErrorMessage(stored: String, retryAt: Long, lang: Lang, now: Long = nowMillis()): String {
+fun lookupErrorMessage(stored: String, retryAt: Long, lang: Lang, now: Long = nowMillis(), otherText: Tr? = null): String {
     val t: Tr = when (classifyLookupError(stored)) {
         LookupErrorKind.QUOTA -> if (retryAt > now) return S.errQuotaAfter.format(lang, waitText(retryAt - now, lang)) else S.errQuota
         LookupErrorKind.BAD_KEY -> S.errBadKey
         LookupErrorKind.NETWORK -> S.errNetwork
         LookupErrorKind.MODEL_UNAVAILABLE -> S.errModel
         LookupErrorKind.NO_KEY -> S.geminiNeedKey
-        LookupErrorKind.OTHER -> S.errOther
+        LookupErrorKind.OTHER -> otherText ?: S.errOther
     }
     return t.of(lang)
 }
@@ -55,14 +55,14 @@ fun lookupErrorMessage(stored: String, retryAt: Long, lang: Lang, now: Long = no
  * with the raw API text behind a small "Details" expander.
  */
 @Composable
-fun LookupErrorNote(stored: String, retryAt: Long, modifier: Modifier = Modifier) {
+fun LookupErrorNote(stored: String, retryAt: Long, modifier: Modifier = Modifier, otherText: Tr? = null) {
     val lang = LocalLang.current
     val other = if (lang == Lang.TA) Lang.EN else Lang.TA
     var open by remember(stored) { mutableStateOf(false) }
     val warn = Color(0xFFB26A00)
     Column(modifier.fillMaxWidth().background(warn.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 8.dp)) {
-        Text(lookupErrorMessage(stored, retryAt, lang), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = warn)
-        Text(lookupErrorMessage(stored, retryAt, other), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(lookupErrorMessage(stored, retryAt, lang, otherText = otherText), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = warn)
+        Text(lookupErrorMessage(stored, retryAt, other, otherText = otherText), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val raw = rawErrorText(stored)
         if (raw.isNotBlank() && raw != "no_key") {
             TextButton(onClick = { open = !open }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {

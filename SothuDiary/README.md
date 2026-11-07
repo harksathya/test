@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.1.2
+# Sothu Diary (சொத்து டைரி) – v2.2.0
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -6,6 +6,45 @@ the documents you have verified – and get a detailed, explainable **price chec
 rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-tap **த / EN**).
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
+
+## What's new in v2.2.0
+
+- **Land check / நில ஆய்வு** (property detail → *Land check*): a first screen of the plot before you sign, inspired by
+  "drop a pin and see zoning, flood risk, proposed roads and data layers". Free sources only; every AI part is grounded,
+  cited and labelled *AI estimate*.
+  - **Plot outline**: tap the plot's corners on the map (*Draw plot corners*; drag a corner to move it; desktop: type
+    lat / lng). Without corners the plot is a circle of the stated size around the pin; without a size only the pin is
+    checked. The drawn area is compared with the stated size (flagged when they differ by more than 15 %).
+  - **Map data layers** – one OpenStreetMap Overpass query (overpass-api.de, falls back to two public mirrors): lakes,
+    tanks / kanmoi / eri, reservoirs, ponds, wetlands, rivers, canals, streams and drains (full outlines, multipolygons
+    joined); highways / main roads (5 km) and roads `highway=construction|proposed`; access roads at the plot (400 m);
+    schools / colleges, hospitals / clinics, bus stops / stands, markets / shops (3 km); railway stations (5 km); power
+    lines, substations, transformers (1 km); water towers / works / tanks (1.5 km); the OSM landuse of the area the pin
+    is in (zoning hint).
+  - **Water / flood buffer**: % of the plot on a water body or within **15 m** of it (TN Combined Development and
+    Building Rules 2019, Rule 27(1)), by grid sampling of the outline (~1,000 points). ≥ 10 % → **HIGH RISK** with the
+    plain-language line "You'd pay for 2.4 acres but could build on about 1.8"; any overlap, water within 100 m or a
+    low-lying plot (≥ 3 m below the land 500 m around, Open-Meteo / Copernicus 90 m elevation) → **CAUTION**.
+  - **Six tiles** with a rating chip and a one-line reason: Boundary (never "verified" automatically – TN FMB / patta
+    are not an open API: "Not verified – check FMB sketch / patta at eservices.tn.gov.in", or *Docs checked* when you
+    ticked FMB sketch + patta in the documents checklist), Connectivity (main road ≤ 1 km strong, ≤ 3 km moderate; one
+    step up for a new / proposed road ≤ 2 km, one step down with no mapped road at the plot), Risk, Locality (school,
+    hospital, bus, shops within 3 km), Utility (power ≤ 500 m, water supply ≤ 1 km, or your own EB / water checklist
+    ticks), Growth (AI estimate).
+  - **AI web search** (optional, the same free Gemini key and model fallback as the price check, always grounded with
+    Google Search): master-plan / DTCP / LPA zoning, announced / proposed / under-construction roads with distance, and
+    the growth outlook – each item only with its source page (unsourced claims become "unknown").
+  - Map overlay of the plot outline and nearby water bodies (osmdroid polygons), a Sources list, results cached for
+    30 days per pin / corners / size (Refresh any time; a failed refresh keeps the earlier result), bilingual
+    Tamil / English, and the friendly quota / no-internet / bad-key messages with *Details*.
+  - **Worth it?** gets one extra HOLD reason only when a land check found HIGH water risk; properties without a land
+    check are judged exactly as before.
+- Data: new optional fields (`Property.boundary`, `AppData.landChecks`) with defaults – files from older versions load
+  unchanged. The grounded Gemini call is now one shared function (`groundedGenerate`) used by the price check and the
+  land check (same behaviour).
+- Limits: OSM coverage is good in towns and patchy in villages (a missing tank on the map is not proof there is none);
+  15 m is the TN rule distance, not a flood model; the AI's zoning / roads / growth are estimates from web pages.
+  Always verify the FMB sketch, patta / chitta and A-register at eservices.tn.gov.in and the EC at tnreginet.gov.in.
 
 ## What's new in v2.1.2
 

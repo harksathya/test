@@ -63,7 +63,13 @@ data class Property(
     val postClaims: Set<String> = emptySet(),
     /** 2.1.1: extra photos saved from the post (e.g. the second carousel slide), file names in the images folder. */
     val photos: List<String> = emptyList(),
+    /** 2.2.0: plot corners the user tapped on the map (land check). Empty = only the pin + stated size are known. */
+    val boundary: List<GeoPt> = emptyList(),
 )
+
+/** A latitude / longitude pair that can be saved (plot corners, water outlines). */
+@Serializable
+data class GeoPt(val lat: Double, val lng: Double)
 
 /** A comment on the source post (YouTube / Instagram / Facebook), shown as a "user review". */
 @Serializable
@@ -239,4 +245,92 @@ data class AppData(
     val onlineRates: List<OnlineRate> = emptyList(),
     /** v2.1: live price lookups (cache, per location + type). */
     val rateLookups: List<RateLookup> = emptyList(),
+    /** 2.2.0: land checks (map data layers + AI), one per property – a cache like [rateLookups]. */
+    val landChecks: List<LandCheck> = emptyList(),
+)
+
+/** One mapped thing near the plot found by the land check (OpenStreetMap), with its distance from the plot. */
+@Serializable
+data class LandFeature(
+    /** water, major_road, road, proposed_road, rail, school, hospital, bus, market, power, water_supply */
+    val category: String,
+    /** The OSM tag value, e.g. "reservoir", "primary", "substation". */
+    val kind: String = "",
+    val name: String = "",
+    val distanceM: Double,
+    val lat: Double? = null,
+    val lng: Double? = null,
+)
+
+/** A road the AI search found announced / proposed / under construction near the plot. */
+@Serializable
+data class AiRoad(
+    val name: String = "",
+    val status: String = "",
+    val distanceKm: Double? = null,
+    val url: String = "",
+    val date: String = "",
+)
+
+/** What the grounded AI search (Gemini + Google Search) found for the plot – an estimate, always with sources. */
+@Serializable
+data class LandAi(
+    /** residential / commercial / industrial / agricultural / institutional / mixed / unknown */
+    val zoning: String = "",
+    val zoningPlan: String = "",
+    val zoningNote: String = "",
+    val zoningUrl: String = "",
+    val roads: List<AiRoad> = emptyList(),
+    /** high / moderate / low / unknown */
+    val growth: String = "",
+    val growthReason: String = "",
+    val growthUrl: String = "",
+)
+
+/**
+ * 2.2.0 "Land check / நில ஆய்வு" result for a property: free map data layers (OpenStreetMap via Overpass, elevation from
+ * Open-Meteo) plus an optional grounded AI search. Saved so it is not fetched again for
+ * [com.hark.sothudiary.domain.land.LandRules.CACHE_DAYS] days. Ratings are recomputed from these facts when shown.
+ */
+@Serializable
+data class LandCheck(
+    val propertyId: String,
+    /** Pin + boundary + size the check was made for; a change makes it stale. */
+    val key: String,
+    val lat: Double,
+    val lng: Double,
+    val fetchedAt: Long = 0,
+    /** Plot outline used (drawn corners, or a circle of the stated area around the pin). */
+    val plot: List<GeoPt> = emptyList(),
+    /** True when [plot] is the user's drawn corners. */
+    val drawn: Boolean = false,
+    val plotAreaSqm: Double = 0.0,
+    // ---- OpenStreetMap ----
+    val osmOk: Boolean = false,
+    val osmError: String? = null,
+    val features: List<LandFeature> = emptyList(),
+    val bufferM: Double = 15.0,
+    /** % of the plot on a water body or within [bufferM] of one; null without map data. */
+    val bufferPct: Double? = null,
+    /** % of the plot on the water body itself. */
+    val waterPct: Double? = null,
+    /** Closest the plot comes to mapped water (m), null when none within the search radius. */
+    val nearestWaterM: Double? = null,
+    val nearestWaterName: String = "",
+    val nearestWaterKind: String = "",
+    /** Outlines of the nearest water bodies, thinned, for the map. */
+    val waterOutlines: List<List<GeoPt>> = emptyList(),
+    /** OSM landuse / natural tags of the areas the pin is in, e.g. "landuse=farmland". */
+    val landuse: List<String> = emptyList(),
+    // ---- Elevation (Open-Meteo, ~90 m terrain model) ----
+    val elevationM: Double? = null,
+    /** Median elevation of 8 points about 500 m around the pin. */
+    val surroundingElevationM: Double? = null,
+    // ---- AI (Gemini + Google Search) ----
+    val ai: LandAi? = null,
+    val aiError: String? = null,
+    val aiRetryAt: Long = 0,
+    val aiModel: String = "",
+    val aiFetchedAt: Long = 0,
+    val sources: List<String> = emptyList(),
 )

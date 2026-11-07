@@ -59,7 +59,34 @@ class ScreenshotTest {
             RateLookup("k0", 9.905, 78.112, 0, "Jaihindpuram, Madurai South taluk, Madurai district", now - 2 * day, 4, 1, "gemini-2.5-flash"),
             RateLookup("k1", 10.03, 78.34, 1, "Melur, Madurai district", now - 2 * day, 2, 0, "gemini-2.5-flash"),
         )
-        r.update { it.copy(properties = props, brokers = listOf(b), interactions = ints, folders = listOf(f), onlineRates = rates, rateLookups = lookups) }
+        // 2.2.0: a saved land check for p1 (fresh, same pin / size), so the land check screens render offline.
+        val p1 = props[0]
+        val plot = com.hark.sothudiary.domain.land.plotOutline(p1)!!.first
+        val proj = com.hark.sothudiary.domain.land.LocalProjection(9.905, 78.112)
+        fun g(x: Double, y: Double) = proj.toLatLng(com.hark.sothudiary.domain.land.XY(x, y)).let { (a, b2) -> GeoPt(a, b2) }
+        val tank = listOf(g(10.0, -120.0), g(160.0, -140.0), g(220.0, 40.0), g(120.0, 130.0), g(15.0, 90.0), g(10.0, -120.0))
+        val land = LandCheck(
+            propertyId = "p1", key = com.hark.sothudiary.domain.land.landCheckKey(p1), lat = 9.905, lng = 78.112, fetchedAt = now - day,
+            plot = plot, drawn = false, plotAreaSqm = com.hark.sothudiary.domain.land.polygonAreaSqm(plot.map { it.lat to it.lng }),
+            osmOk = true, bufferPct = 25.0, waterPct = 0.0, nearestWaterM = 0.0, nearestWaterName = "Madakulam tank", nearestWaterKind = "reservoir",
+            waterOutlines = listOf(tank), landuse = listOf("landuse=residential"),
+            features = listOf(
+                LandFeature("water", "reservoir", "Madakulam tank", 0.0),
+                LandFeature("major_road", "primary", "Tirumangalam Road", 650.0),
+                LandFeature("proposed_road", "primary", "Ring road link", 1_200.0),
+                LandFeature("road", "residential", "", 30.0),
+                LandFeature("school", "school", "Govt School", 900.0),
+                LandFeature("hospital", "hospital", "GH", 3_000.0),
+                LandFeature("bus", "bus_stop", "", 350.0),
+                LandFeature("power", "minor_line", "", 80.0),
+            ),
+            elevationM = 132.0, surroundingElevationM = 134.0,
+            ai = LandAi(zoning = "residential", zoningPlan = "Madurai LPA Master Plan", zoningUrl = "https://example.org/plan",
+                roads = listOf(AiRoad("Madurai ring road widening", "under construction", 1.2, "https://example.org/road", "2026")),
+                growth = "high", growthReason = "Emerging residential corridor along the ring road", growthUrl = "https://example.org/growth"),
+            aiModel = "gemini-flash-latest", aiFetchedAt = now - day, sources = listOf("https://example.org/plan"),
+        )
+        r.update { it.copy(properties = props, brokers = listOf(b), interactions = ints, folders = listOf(f), onlineRates = rates, rateLookups = lookups, landChecks = listOf(land)) }
         return r
     }
 
@@ -106,6 +133,8 @@ class ScreenshotTest {
             }
         }
         shot("followups", Lang.EN, ThemeMode.LIGHT, h = 900) { FollowUpsScreen(it) }
+        shot("land_check", Lang.EN, ThemeMode.LIGHT, h = 2600) { LandCheckScreen(it, "p1") }
+        shot("land_check_ta_dark", Lang.TA, ThemeMode.DARK, h = 2600) { LandCheckScreen(it, "p1") }
     }
 }
 
