@@ -115,6 +115,13 @@ class AndroidPlatform(
         }
     }
 
+    override fun imageAspect(fileName: String): Double? {
+        val path = imagePath(fileName) ?: return null
+        val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(path, o)
+        return if (o.outWidth > 0 && o.outHeight > 0) o.outHeight.toDouble() / o.outWidth else null
+    }
+
     override fun deleteImage(fileName: String) {
         if (fileName.isBlank() || fileName.contains('/')) return
         java.io.File(AndroidImages.dir(context), fileName).delete()

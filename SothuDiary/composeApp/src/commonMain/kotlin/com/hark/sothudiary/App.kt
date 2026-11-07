@@ -39,6 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -116,14 +119,32 @@ fun App(
     onSharedConsumed: () -> Unit = {},
     openFollowUps: Boolean = false,
     onOpenFollowUpsConsumed: () -> Unit = {},
+    /** 2.3.0: a share link the app was opened with (sothudiary:// or the https page link). */
+    incomingLink: String? = null,
+    onIncomingLinkConsumed: () -> Unit = {},
 ) {
     val nav = remember { Nav() }
     val filters = remember { FilterState() }
     val lang = repo.data.settings.lang
+    /** 2.3.0: a received share code waiting for "Add / Update" (bad link: the code is kept and the dialog says so). */
+    var importCode by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(incomingLink) {
+        val l = incomingLink
+        if (l != null) {
+            importCode = com.hark.sothudiary.domain.share.extractShareCode(l) ?: "bad"
+            onIncomingLinkConsumed()
+        }
+    }
 
     LaunchedEffect(shared) {
         val sc = shared
-        if (sc != null && (sc.text.isNotBlank() || sc.imageFiles.isNotEmpty())) {
+        // 2.3.0: a Sothu Diary share link shared into the app (e.g. from WhatsApp) imports that property.
+        val code = sc?.takeIf { it.imageFiles.isEmpty() }?.let { com.hark.sothudiary.domain.share.extractShareCode(it.text) }
+        if (code != null) {
+            importCode = code
+            onSharedConsumed()
+        } else if (sc != null && (sc.text.isNotBlank() || sc.imageFiles.isNotEmpty())) {
             val text = sc.text
             val url = extractUrl(text) ?: ""
             val caption = (if (url.isNotEmpty()) text.replace(url, "") else text).trim()
@@ -166,6 +187,10 @@ fun App(
                     wide = wide,
                 )
                 if (wide) WideLayout(ctx) else PhoneLayout(ctx)
+                importCode?.let { code ->
+                    val sp = remember(code) { com.hark.sothudiary.domain.share.decodeShare(code) }
+                    com.hark.sothudiary.ui.screens.ImportSharedDialog(ctx, sp) { importCode = null }
+                }
                 com.hark.sothudiary.ui.OverlayHost()
             }
         }

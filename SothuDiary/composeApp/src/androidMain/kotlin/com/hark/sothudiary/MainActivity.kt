@@ -13,6 +13,8 @@ import androidx.compose.runtime.setValue
 class MainActivity : ComponentActivity(), ActivityBridge {
 
     private var shared by mutableStateOf<SharedContent?>(null)
+    /** 2.3.0: a property share link the app was opened with. */
+    private var incomingLink by mutableStateOf<String?>(null)
     private var openFollowUps by mutableStateOf(false)
 
     private var pendingPermission: ((Boolean) -> Unit)? = null
@@ -73,6 +75,8 @@ class MainActivity : ComponentActivity(), ActivityBridge {
                 platform = p,
                 shared = shared,
                 onSharedConsumed = { shared = null },
+                incomingLink = incomingLink,
+                onIncomingLinkConsumed = { incomingLink = null },
                 openFollowUps = openFollowUps,
                 onOpenFollowUpsConsumed = { openFollowUps = false },
             )
@@ -105,6 +109,11 @@ class MainActivity : ComponentActivity(), ActivityBridge {
     private fun handleIntent(intent: Intent?) {
         if (intent?.getStringExtra(Reminders.EXTRA_OPEN) == Reminders.OPEN_FOLLOWUPS) openFollowUps = true
         val action = intent?.action ?: return
+        if (action == Intent.ACTION_VIEW) {
+            // 2.3.0: sothudiary://p?d=… or https://harksathya.github.io/test/p/#…
+            intent.dataString?.takeIf { it.startsWith("sothudiary:") || it.contains("harksathya.github.io/test/p") }?.let { incomingLink = it }
+            return
+        }
         if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)
         val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)

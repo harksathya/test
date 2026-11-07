@@ -189,3 +189,29 @@ fun <T> assembleRings(paths: List<List<T>>): List<List<T>> {
     }
     return out
 }
+
+/** 2.3.0: the point of segment [a]–[b] closest to [p]. */
+fun closestOnSegment(p: XY, a: XY, b: XY): XY {
+    val dx = b.x - a.x
+    val dy = b.y - a.y
+    val len2 = dx * dx + dy * dy
+    val t = if (len2 <= 0.0) 0.0 else (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).coerceIn(0.0, 1.0)
+    return XY(a.x + t * dx, a.y + t * dy)
+}
+
+/** 2.3.0: the point of any of [paths] closest to [p] (null without points). */
+fun closestOnPaths(p: XY, paths: List<List<XY>>): XY? {
+    var best: XY? = null
+    var bestD = Double.MAX_VALUE
+    for (path in paths) {
+        if (path.size == 1) {
+            val d = distToSegment(p, path[0], path[0]); if (d < bestD) { bestD = d; best = path[0] }
+        }
+        for (i in 0 until path.size - 1) {
+            val c = closestOnSegment(p, path[i], path[i + 1])
+            val d = kotlin.math.sqrt((c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y))
+            if (d < bestD) { bestD = d; best = c }
+        }
+    }
+    return best
+}

@@ -52,6 +52,9 @@ interface PlatformActions {
 
     /** Soft background music (Android). */
     val music: MusicActions get() = NoMusic
+
+    /** 2.3.0: height / width of a stored image (to keep an FMB sketch's proportions on the map), null if unknown. */
+    fun imageAspect(fileName: String): Double? = null
 }
 
 /** Background music: a quiet looping track while the app is in the foreground. */
@@ -165,7 +168,7 @@ expect suspend fun httpRequest(
 /** Downloads a file (e.g. a post thumbnail). Null on errors. */
 expect suspend fun httpBytes(url: String, userAgent: String, maxBytes: Int = 8_000_000): ByteArray?
 
-const val APP_USER_AGENT = "SothuDiary/2.2 (com.hark.sothudiary; personal property diary app)"
+const val APP_USER_AGENT = "SothuDiary/2.3 (com.hark.sothudiary; personal property diary app)"
 
 // Speech-to-text error codes passed to AudioActions.startSpeech(onError).
 const val SPEECH_PERMISSION = "permission"

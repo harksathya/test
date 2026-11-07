@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocationOn
@@ -150,6 +151,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
     var findingOnline by remember(p.id) { mutableStateOf(false) }
     var onlineMessage by remember(p.id) { mutableStateOf<String?>(null) }
     var askGeminiKey by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf(false) }
     var loadingReviews by remember(p.id) { mutableStateOf(false) }
     var readerOpen by remember { mutableStateOf(false) }
     val msgNoReviews = S.noReviewsFound.of(lang)
@@ -204,6 +206,8 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 onToggleLang = ctx.toggleLang,
                 onBack = { ctx.nav.pop() },
                 actions = {
+                    // 2.3.0: share the property as a WhatsApp-friendly link.
+                    IconButton(onClick = { sharing = true }) { Icon(Icons.Filled.Share, contentDescription = S.share.s()) }
                     IconButton(onClick = { ctx.nav.push(Route.PropertyEdit(p.id)) }) { Icon(Icons.Filled.Edit, contentDescription = S.edit.s()) }
                     IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, contentDescription = S.delete.s()) }
                 },
@@ -303,6 +307,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                     S.lookupStatus.format(lang, formatDateShort(l.fetchedAt, lang), l.found, l.place.ifBlank { "—" })
                 },
                 lookupError = latest?.takeIf { it.error != null && it.error != "no_key" },
+                latestLookup = latest,
                 needsKey = data.settings.geminiApiKey.isBlank(),
                 onSetupKey = { askGeminiKey = true },
             )
@@ -470,6 +475,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
         )
     }
 
+    if (sharing) SharePropertyDialog(ctx, p) { sharing = false }
     if (askGeminiKey) {
         GeminiKeyDialog(
             current = data.settings.geminiApiKey,

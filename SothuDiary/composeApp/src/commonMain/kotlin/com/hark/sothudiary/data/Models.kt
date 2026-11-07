@@ -65,6 +65,43 @@ data class Property(
     val photos: List<String> = emptyList(),
     /** 2.2.0: plot corners the user tapped on the map (land check). Empty = only the pin + stated size are known. */
     val boundary: List<GeoPt> = emptyList(),
+    /** 2.3.0: survey number / sub-division as the user found it (TNGIS / FMB / patta), e.g. "123/4B". */
+    val surveyNumber: String = "",
+    /** 2.3.0: an FMB sketch image laid over the map to trace the corners (Android). */
+    val sketch: SketchOverlay? = null,
+    /** 2.3.0: when this property was imported from a shared link (epoch ms), else 0. */
+    val importedAt: Long = 0,
+)
+
+/**
+ * 2.3.0: an FMB sketch (image in app storage) placed on the map: centred at [lat]/[lng], [widthM] metres wide,
+ * turned [rotationDeg] clockwise, drawn with [alpha] opacity.
+ */
+@Serializable
+data class SketchOverlay(
+    val file: String,
+    val lat: Double,
+    val lng: Double,
+    val widthM: Double = 100.0,
+    val rotationDeg: Double = 0.0,
+    val alpha: Float = 0.6f,
+    /** Height / width of the image (to keep its proportions on the map). */
+    val aspect: Double = 1.0,
+)
+
+/** 2.3.0: one web search result (free keyless search) – title, page and the text shown under it. */
+@Serializable
+data class WebSnippet(val title: String = "", val url: String = "", val snippet: String = "")
+
+/** 2.3.0: the ISRO Bhuvan land-use / land-cover class at a point (SIS-DP 1:10,000 map). */
+@Serializable
+data class LulcHit(
+    val lat: Double,
+    val lng: Double,
+    val code: String = "",
+    val level1: String = "",
+    val level2: String = "",
+    val level3: String = "",
 )
 
 /** A latitude / longitude pair that can be saved (plot corners, water outlines). */
@@ -138,6 +175,10 @@ data class RateLookup(
     val sources: List<String> = emptyList(),
     /** v2.1.2: when the API asked us to retry after a quota error (epoch ms), else 0. */
     val retryAt: Long = 0,
+    /** 2.3.0: the rates came from our own free web search read by Gemini (not Google Search grounding). */
+    val viaSearch: Boolean = false,
+    /** 2.3.0: web search results kept when Gemini could not read them (shown as they are, with their pages). */
+    val snippets: List<WebSnippet> = emptyList(),
 )
 
 /** A user-made collection, e.g. "Shortlist" or "Jaihindpuram plots". */
@@ -333,4 +374,18 @@ data class LandCheck(
     val aiModel: String = "",
     val aiFetchedAt: Long = 0,
     val sources: List<String> = emptyList(),
+    // ---- 2.3.0 ----
+    /** Map data layers that could not be loaded this time ([com.hark.sothudiary.domain.land.OsmLayer]). */
+    val osmFailedLayers: List<String> = emptyList(),
+    /** Layers that failed now but were kept from the earlier check of the same spot. */
+    val osmKeptLayers: List<String> = emptyList(),
+    /** 0 = made by 2.2.x (no railway / protected-area layers), 2 = 2.3.0 layers. */
+    val layersVersion: Int = 0,
+    /** ISRO Bhuvan land use at the pin (first) and the plot corners. */
+    val lulc: List<LulcHit> = emptyList(),
+    val lulcError: String? = null,
+    /** The AI part came from our own web search read by Gemini (Google Search grounding was not available). */
+    val aiViaSearch: Boolean = false,
+    /** Web search results kept when Gemini could not read them. */
+    val webSnippets: List<WebSnippet> = emptyList(),
 )

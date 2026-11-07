@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.hark.sothudiary",
+    "sha256_cert_fingerprints": ["F6:6D:71:31:87:1A:6C:3A:77:E0:92:42:50:E2:81:3F:27:3E:FD:38:67:A2:5D:DD:3D:64:69:BC:F6:3E:6E:1C"]
+  }
+}]

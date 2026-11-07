@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.2.0
+# Sothu Diary (சொத்து டைரி) – v2.3.0
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -6,6 +6,68 @@ the documents you have verified – and get a detailed, explainable **price chec
 rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-tap **த / EN**).
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
+
+## What's new in v2.3.0
+
+- **Land check that does not give up when the free map server is busy.** The OpenStreetMap data is now fetched as seven
+  small layers (water, roads, schools / hospitals / bus / shops, power & water supply, railway, protected areas & forest,
+  land use) in parallel, each raced across the public Overpass servers (overpass.private.coffee – formerly
+  overpass.kumi.systems –, maps.mail.ru and overpass-api.de; overpass.osm.ch is not used because it only holds
+  Switzerland). A server that does not answer within 7 s gets a second server alongside; busy answers (429 / 504 /
+  "runtime error" remarks) back off and move on; at most two requests per server; everything within one 40 s budget.
+  Layers that load are shown; the ones that did not are named ("Some map layers did not load: roads") and their tiles
+  say *Unknown* – and when an earlier check of the same spot had them, they are kept from it. A partial check is tried
+  again on the next open (at most every 10 minutes).
+- **ISRO Bhuvan land use** (free, keyless WMS GetFeatureInfo on bhuvan-vec1.nrsc.gov.in, SIS-DP v2 1:10,000 per TN
+  district) at the pin and up to four corners – a second, independent source. If the water layer fails but Bhuvan shows a
+  water body at the plot, Risk turns *HIGH*; if OSM shows no water but Bhuvan does, Risk is at least *CAUTION*. (Bhuvan's
+  WFS is disabled and its cadastral layer draws nothing, so it gives no survey numbers.)
+- **Drag the plot corners.** Corners follow the finger at once (no long-press – osmdroid's long-press drag was why
+  "corners could only be undone"); the area updates while dragging. Tap a corner to select it, then *Delete corner*; small
+  ◦ handles between corners add a corner there (tap or drag). Desktop: type lat / lng, tap a corner chip and *Move corner*.
+- **FMB sketch overlay** (Android): pick the FMB sketch image (from eservices.tn.gov.in), then move it (N / S / E / W, 1 /
+  5 / 20 m steps), size it, turn it and set its see-through level until it lines up with the map – and tap the corners over
+  it. It is saved with the property.
+- **Survey number (புல எண்)**: there is no open, free, keyless service that turns a map point into a TN survey number
+  (TNGIS's APIs need an app name issued on approval; the GI viewer's own calls are not public), so the land check has an
+  honest *Survey number* card: the place from the map, *Copy latitude, longitude*, *Open the TNGIS map (Tamil Nilam)* –
+  paste the coordinates in "Goto" and tap the plot –, *Get the FMB sketch* and a field to save "123/4B" (normalised).
+- **New tiles: Railway and Protected area / ESZ** (with rows and map markers): railway lines (3 km), level crossings,
+  stations; a line within 50 m of the plot → *Very close* (a railway NOC is needed about 30 m from railway land –
+  Indian Railways Works Manual para 827), within 200 m → noise caution. National parks, sanctuaries, tiger reserves and
+  nature reserves within 10 km and forest land within 2 km: inside → *Restricted*, within 1 km of a park / sanctuary →
+  likely inside its eco-sensitive zone (at least 1 km where none is notified – Supreme Court, In re T.N. Godavarman,
+  3 June 2022, modified 26 April 2023), within 10 km → *Check ESZ*. Free OSM data; no official ESZ map is available as a
+  free keyless service.
+- **Share a property** (detail screen → share icon): a WhatsApp-friendly message with a link
+  `https://harksathya.github.io/test/p/#1.…` – the property (and, if you choose, your notes, the land check and the broker)
+  is compressed into the part after "#", so nothing is stored on a server. The page shows a preview, an *Open in Sothu Diary*
+  button (Android intent to `sothudiary://p?d=…`, falling back to the APK download) and the APK link. In the app, a link
+  you open (or share into the app from WhatsApp) asks *Add to my properties*, or – when you already have it – *Update my
+  copy* (your notes, status, folders, documents and photos stay) / *Add as a new copy*.
+  - App Links: the https link is declared (autoVerify) for `harksathya.github.io/test/p`, but Android only verifies
+    `https://harksathya.github.io/.well-known/assetlinks.json` at the domain root, which needs a separate
+    `harksathya.github.io` repository – so the link opens the page, which hands over to the app. `docs/.well-known/assetlinks.json`
+    holds the statement (release key SHA-256 `F6:6D:71:31:87:1A:6C:3A:77:E0:92:42:50:E2:81:3F:27:3E:FD:38:67:A2:5D:DD:3D:64:69:BC:F6:3E:6E:1C`)
+    to copy there if that repository is created.
+- **Gemini key is optional on first run**: *Skip for now / இப்போதைக்கு தவிர்* on the setup card (and in the key dialog).
+  Everything except the live price check and the AI parts works without a key; those show a gentle "add a key" note.
+- **"Quota exhausted" fixed at the root.** Google Search grounding is free only on Gemini 2.5 Flash / Flash-Lite; on Gemini 3
+  and newer it is not part of the free tier, and every grounded call answered 429 "limit: 0" – Auto picked the newest Flash
+  first, so free keys always saw "quota exhausted". Now: grounded calls try 2.5 Flash / Flash-Lite first, at most 3
+  grounded calls per lookup, and the quota error is read properly (per minute → retry delay, per day → until midnight
+  Pacific, "limit: 0" → skip that model for a day).
+  - **Free web search fallback**: when grounding is not possible, the app runs its own keyless web search (DuckDuckGo
+    HTML, DuckDuckGo Lite, then Bing RSS with an unrelated-page filter) and gives the results to an ordinary Gemini call
+    that may only use them: every rate / road / zoning / growth item must cite one of those exact pages or it is dropped
+    (shown as "From web search"). When Gemini is out of quota too, the search results themselves are shown (title, snippet,
+    page) so you can still read them. Sources are always shown.
+- Data: new optional fields with defaults (`Property.surveyNumber`, `sketch`, `importedAt`; `LandCheck.osmFailedLayers`,
+  `osmKeptLayers`, `layersVersion`, `lulc`, `aiViaSearch`, `webSnippets`; `RateLookup.viaSearch`, `snippets`) – older
+  files load unchanged; land checks from 2.2.x show *Not part of this check – tap Refresh* on the two new tiles.
+- Limits: the web search sites may refuse automated requests at times (then the fallback finds nothing and the friendly
+  quota message stays); the share page needs a recent browser for its preview (the button works regardless); OSM
+  railway / forest / protected-area coverage varies by area.
 
 ## What's new in v2.2.0
 

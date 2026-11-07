@@ -79,7 +79,13 @@ class ScreenshotTest {
                 LandFeature("hospital", "hospital", "GH", 3_000.0),
                 LandFeature("bus", "bus_stop", "", 350.0),
                 LandFeature("power", "minor_line", "", 80.0),
+                // 2.3.0 layers
+                LandFeature("rail_line", "rail", "Madurai – Tirumangalam line", 1_150.0, 9.915, 78.105),
+                LandFeature("level_crossing", "level_crossing", "", 1_300.0, 9.916, 78.104),
+                LandFeature("rail", "station", "Madurai Jn", 3_200.0),
             ),
+            layersVersion = 2,
+            lulc = listOf(LulcHit(9.905, 78.112, "BUUR", "Built up", "Built up (Urban)", "Built up (Urban)")),
             elevationM = 132.0, surroundingElevationM = 134.0,
             ai = LandAi(zoning = "residential", zoningPlan = "Madurai LPA Master Plan", zoningUrl = "https://example.org/plan",
                 roads = listOf(AiRoad("Madurai ring road widening", "under construction", 1.2, "https://example.org/road", "2026")),
@@ -135,6 +141,19 @@ class ScreenshotTest {
         shot("followups", Lang.EN, ThemeMode.LIGHT, h = 900) { FollowUpsScreen(it) }
         shot("land_check", Lang.EN, ThemeMode.LIGHT, h = 2600) { LandCheckScreen(it, "p1") }
         shot("land_check_ta_dark", Lang.TA, ThemeMode.DARK, h = 2600) { LandCheckScreen(it, "p1") }
+        // 2.3.0: the corner editor with a selected corner, and the share dialog.
+        shot("boundary_editor", Lang.EN, ThemeMode.LIGHT, h = 1500) { c ->
+            val base = c.repo.data.properties.first { it.id == "p1" }
+            val proj = com.hark.sothudiary.domain.land.LocalProjection(9.905, 78.112)
+            fun g(x: Double, y: Double) = proj.toLatLng(com.hark.sothudiary.domain.land.XY(x, y)).let { (a, b2) -> GeoPt(a, b2) }
+            androidx.compose.foundation.layout.Box {
+                BoundaryEditor(base.copy(boundary = listOf(g(-10.0, -8.0), g(10.0, -8.0), g(11.0, 9.0), g(-9.0, 8.0))), {}, {}, {}, c)
+                com.hark.sothudiary.ui.OverlayHost()
+            }
+        }
+        shot("share_dialog", Lang.EN, ThemeMode.LIGHT, h = 1200) { c ->
+            SharePropertyDialog(c, c.repo.data.properties.first { it.id == "p1" }) {}
+        }
     }
 }
 

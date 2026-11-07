@@ -343,6 +343,8 @@ fun PriceCheckCard(
     onSetupKey: (() -> Unit)? = null,
     /** The latest live lookup when it failed: shown once, as a short friendly message with a Details expander. */
     lookupError: com.hark.sothudiary.data.RateLookup? = null,
+    /** 2.3.0: the latest lookup (to show "found with a free web search" and its raw results when the AI failed). */
+    latestLookup: com.hark.sothudiary.data.RateLookup? = null,
 ) {
     val lang = LocalLang.current
     val color = verdictColor(check.verdict)
@@ -452,6 +454,11 @@ fun PriceCheckCard(
                 else if (onlineMessage != null) Text(onlineMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
         }
+        // 2.3.0: rates found through our own free web search, or its raw results when Gemini could not read them.
+        if (latestLookup != null && latestLookup.viaSearch && latestLookup.found > 0)
+            Text(S.viaSearchNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+        if (latestLookup != null && latestLookup.snippets.isNotEmpty())
+            com.hark.sothudiary.ui.screens.WebSnippetList(latestLookup.snippets, onOpenUrl)
         Spacer(Modifier.height(8.dp))
         Text(S.askingPricesNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row {

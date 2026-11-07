@@ -7,6 +7,8 @@ import com.hark.sothudiary.data.GeoPt
 import com.hark.sothudiary.data.LandAi
 import com.hark.sothudiary.data.LandCheck
 import com.hark.sothudiary.data.LandFeature
+import com.hark.sothudiary.data.LulcHit
+import com.hark.sothudiary.data.WebSnippet
 import com.hark.sothudiary.data.Property
 import com.hark.sothudiary.data.nowMillis
 import com.hark.sothudiary.domain.Geocoder
@@ -62,6 +64,28 @@ object LandRules {
     const val CACHE_DAYS = 30
     /** Search radius for water around the plot. */
     const val WATER_RADIUS_M = 1000
+    // ---- 2.3.0 ----
+    /**
+     * Indian Railways Works Manual para 827: an open space of about 30 m between railway land and a new building; the
+     * track centre line is measured here (railway land is wider than the track), so 50 m from the track is "near".
+     */
+    const val RAIL_NOC_M = 50.0
+    /** A railway line closer than this: noise / vibration caution. */
+    const val RAIL_NEAR_M = 200.0
+    /**
+     * Eco-sensitive zone: at least 1 km around a national park / wildlife sanctuary where no ESZ is notified
+     * (Supreme Court, In re T.N. Godavarman, 3 June 2022, modified 26 April 2023), and up to 10 km as a general principle.
+     */
+    const val ESZ_MIN_M = 1000.0
+    const val ESZ_MAX_M = 10_000.0
+    /** Forest land this close to the plot: check the boundary with the forest department. */
+    const val FOREST_NEAR_M = 100.0
+    /** Version of the map layers a 2.3.0 check fetches ([com.hark.sothudiary.data.LandCheck.layersVersion]). */
+    const val LAYERS_VERSION = 2
+    /** Overall time for the map layers, so the screen never waits for minutes. */
+    const val OSM_BUDGET_MS = 40_000L
+    /** Overall time for the AI part (grounded search, then the free web search fallback). */
+    const val AI_BUDGET_MS = 75_000L
 }
 
 /** Half-width of a river / canal / stream mapped only as a centre line (OSM has no width). */
@@ -84,7 +108,11 @@ fun landCheckFor(data: AppData, propertyId: String): LandCheck? = data.landCheck
 
 /** The saved check, if it is for the property's current pin / boundary / size and younger than [LandRules.CACHE_DAYS]. */
 fun freshLandCheck(data: AppData, p: Property, now: Long = nowMillis()): LandCheck? =
-    landCheckFor(data, p.id)?.takeIf { it.key == landCheckKey(p) && it.osmOk && now - it.fetchedAt < LandRules.CACHE_DAYS * DAY_MS }
+    landCheckFor(data, p.id)?.takeIf {
+        it.key == landCheckKey(p) && it.osmOk && now - it.fetchedAt < LandRules.CACHE_DAYS * DAY_MS &&
+            // 2.3.0: a check with layers that did not load is tried again (at most every 10 minutes).
+            (it.osmFailedLayers.isEmpty() || now - it.fetchedAt < 10 * 60 * 1000L)
+    }
 
 /** The plot outline to check: the drawn corners (if near the pin), else a circle of the stated area, else null. */
 fun plotOutline(p: Property): Pair<List<GeoPt>, Boolean>? {
@@ -179,17 +207,38 @@ fun osmFacts(elements: List<OsmElement>, lat: Double, lng: Double, plot: List<Ge
         val pt = w.c.element.anyPoint()
         features += LandFeature(Cat.WATER, w.c.kind, w.c.element.name, w.dist, pt?.first, pt?.second)
     }
+    // 2.3.0: protected areas and forests are areas – 0 when the pin is inside the (unclipped) outline.
+    fun areaDist(e: OsmElement): Double? {
+        val shape = waterShape(e, "", proj)
+        val d = if (!shape.isEmpty()) distanceToShape(pin, shape) else null
+        return listOfNotNull(d, distFromPin(e)).minOrNull()
+    }
     val other = classified.filter { it.category != Cat.WATER && it.category != Cat.LANDUSE }
-        .mapNotNull { c -> distFromPin(c.element)?.let { c to it } }
+        .mapNotNull { c -> (if (c.category == Cat.PROTECTED || c.category == Cat.FOREST) areaDist(c.element) else distFromPin(c.element))?.let { c to it } }
         .groupBy { it.first.category }
     for ((cat, list) in other) {
         // Keep the nearest few per category (named ones first among equals) – enough for the reasons and the counts.
         list.sortedBy { it.second }.take(if (cat == Cat.BUS || cat == Cat.MARKET || cat == Cat.SCHOOL) 5 else 3).forEach { (c, d) ->
-            val pt = c.element.anyPoint()
+            // 2.3.0: lines and areas are marked on the map at their point nearest to the plot.
+            val pt = if (cat in setOf(Cat.RAIL_LINE, Cat.PROTECTED, Cat.FOREST) && c.element.paths.isNotEmpty())
+                closestOnPaths(pin, c.element.paths.map { path -> path.map { proj.toXY(it.first, it.second) } })?.let { proj.toLatLng(it) } ?: c.element.anyPoint()
+            else c.element.anyPoint()
             features += LandFeature(cat, c.kind, c.element.name, d, pt?.first, pt?.second)
         }
     }
     val landuse = classified.filter { it.category == Cat.LANDUSE }.map { it.kind }.distinct()
+    // 2.3.0: the pin inside a protected area / forest (the Overpass is_in answer) is distance 0.
+    classified.filter { it.category == Cat.LANDUSE }.forEach { c ->
+        val t = c.element.tags
+        val cat = when {
+            c.kind == "boundary=protected_area" || c.kind == "boundary=national_park" || c.kind == "leisure=nature_reserve" ||
+                t["boundary"] in setOf("protected_area", "national_park") || t["leisure"] == "nature_reserve" -> Cat.PROTECTED
+            c.kind == "landuse=forest" -> Cat.FOREST
+            else -> null
+        } ?: return@forEach
+        if (features.none { it.category == cat && it.distanceM <= 0.0 && it.name == c.element.name })
+            features += LandFeature(cat, if (cat == Cat.PROTECTED) protectedKind(t) else "forest", c.element.name, 0.0, lat, lng)
+    }
     return OsmFacts(
         features = features,
         bufferPct = bufferPct,
@@ -207,7 +256,8 @@ fun osmFacts(elements: List<OsmElement>, lat: Double, lng: Double, plot: List<Ge
 /** How good a tile is for the buyer. For Risk, POOR means HIGH risk. */
 enum class LandRating { GOOD, FAIR, POOR, UNKNOWN }
 
-enum class LandTile { BOUNDARY, CONNECTIVITY, RISK, LOCALITY, UTILITY, GROWTH }
+enum class LandTile { BOUNDARY, CONNECTIVITY, RISK, LOCALITY, UTILITY, GROWTH,
+    /** 2.3.0 */ RAILWAY, /** 2.3.0: protected areas / eco-sensitive zone / forest */ ECO }
 
 /** Why a tile got its rating; the UI turns the code + args into Tamil / English. */
 enum class LandReason {
@@ -225,9 +275,22 @@ enum class LandReason {
     GROWTH_AI, GROWTH_NO_KEY, GROWTH_UNKNOWN,
     // any tile
     NO_MAP_DATA,
+    // 2.3.0 – Railway
+    RAIL_NOC, RAIL_NEAR, RAIL_CLEAR, NO_RAIL,
+    // 2.3.0 – Protected areas / ESZ / forest
+    INSIDE_PROTECTED, ESZ_LIKELY, ESZ_POSSIBLE, NEAR_FOREST, NO_PROTECTED,
+    /** 2.3.0: the layer was not part of this (older) check – refresh. */
+    NOT_CHECKED,
+    /** 2.3.0: this tile's map layer did not load this time. */
+    LAYER_FAILED,
+    /** 2.3.0: the water layer did not load, but the ISRO land-use map shows a water body at the plot. */
+    LULC_WATER,
 }
 
-/** An extra line under a tile: [code] is one of "low_lying", "no_access", "proposed", "rail". */
+/**
+ * An extra line under a tile: [code] is one of "low_lying", "no_access", "proposed", "rail", and (2.3.0)
+ * "crossing", "station", "lulc_water", "lulc_forest".
+ */
 data class Note(val code: String, val args: List<String> = emptyList())
 
 data class TileResult(
@@ -260,8 +323,20 @@ fun lowLyingBy(c: LandCheck): Double? {
     return s - e
 }
 
+/** 2.3.0: did the map layer behind [cat] fail in this check? */
+fun LandCheck.layerFailed(layer: String): Boolean = layer in osmFailedLayers
+
+/** 2.3.0: Bhuvan land use at the pin / corners says water (or wetland). */
+fun lulcWater(c: LandCheck): LulcHit? = c.lulc.firstOrNull { lulcKind(it) == LulcKind.WATER || lulcKind(it) == LulcKind.WETLAND }
+
 fun riskTile(c: LandCheck): TileResult {
     if (!c.osmOk) return TileResult(LandTile.RISK, LandRating.UNKNOWN, LandReason.NO_MAP_DATA)
+    if (c.layerFailed(OsmLayer.WATER)) {
+        // 2.3.0: the water layer did not load – the ISRO land-use map can still flag a water body at the plot.
+        val w = lulcWater(c)
+        return if (w != null) TileResult(LandTile.RISK, LandRating.POOR, LandReason.LULC_WATER, listOf(lulcLabel(w)))
+        else TileResult(LandTile.RISK, LandRating.UNKNOWN, LandReason.LAYER_FAILED)
+    }
     val buf = c.bufferPct ?: 0.0
     val water = c.waterPct ?: 0.0
     val name = c.nearestWaterName
@@ -269,6 +344,14 @@ fun riskTile(c: LandCheck): TileResult {
     val low = lowLyingBy(c)
     val notes = mutableListOf<Note>()
     if (low != null && low >= LandRules.LOW_LYING_M) notes += Note("low_lying", listOf(dec1(low)))
+    // 2.3.0: an independent source (ISRO land-use map) shows water where OpenStreetMap shows none – at least a caution.
+    val lw = lulcWater(c)?.takeIf { water <= 0.0 && buf <= 0.0 && !pinOnWater }
+    if (lw != null) notes += Note("lulc_water", listOf(lulcLabel(lw)))
+    val base = riskBase(c, water, buf, pinOnWater, name, low, notes)
+    return if (lw != null && base.rating == LandRating.GOOD) base.copy(rating = LandRating.FAIR) else base
+}
+
+private fun riskBase(c: LandCheck, water: Double, buf: Double, pinOnWater: Boolean, name: String, low: Double?, notes: List<Note>): TileResult {
     return when {
         water > 0.0 || pinOnWater -> TileResult(LandTile.RISK, LandRating.POOR, LandReason.PLOT_ON_WATER, listOf(pct0(maxOf(water, if (pinOnWater) 100.0 else 0.0)), name), notes)
         buf >= LandRules.HIGH_RISK_PCT -> TileResult(LandTile.RISK, LandRating.POOR, LandReason.IN_BUFFER, listOf(pct0(buf), name, distText(c.bufferM)), notes)
@@ -296,6 +379,7 @@ fun proposedRoad(c: LandCheck): Pair<String, Double>? {
 
 fun connectivityTile(c: LandCheck): TileResult {
     if (!c.osmOk) return TileResult(LandTile.CONNECTIVITY, LandRating.UNKNOWN, LandReason.NO_MAP_DATA)
+    if (c.layerFailed(OsmLayer.ROADS)) return TileResult(LandTile.CONNECTIVITY, LandRating.UNKNOWN, LandReason.LAYER_FAILED)
     val major = c.nearest(Cat.MAJOR_ROAD)
     val access = c.nearest(Cat.ROAD) ?: major?.takeIf { it.distanceM <= LandRules.ACCESS_ROAD_M }
     var rating = when {
@@ -327,6 +411,7 @@ fun connectivityTile(c: LandCheck): TileResult {
 
 fun localityTile(c: LandCheck): TileResult {
     if (!c.osmOk) return TileResult(LandTile.LOCALITY, LandRating.UNKNOWN, LandReason.NO_MAP_DATA)
+    if (c.layerFailed(OsmLayer.AMENITIES)) return TileResult(LandTile.LOCALITY, LandRating.UNKNOWN, LandReason.LAYER_FAILED)
     val r = LandRules.LOCALITY_RADIUS_M
     val cats = listOf(Cat.SCHOOL, Cat.HOSPITAL, Cat.BUS, Cat.MARKET)
     val present = cats.filter { c.within(it, r) > 0 }
@@ -359,6 +444,7 @@ fun utilityTile(c: LandCheck, docs: Set<DocItem>): TileResult {
         when { waterDoc -> "doc"; water != null -> distText(water.distanceM); else -> "" },
     )
     val reason = when {
+        !hasPower && !hasWater && c.osmOk && c.layerFailed(OsmLayer.UTILITIES) -> LandReason.LAYER_FAILED
         !hasPower && !hasWater -> if (c.osmOk) LandReason.NO_UTILITIES else LandReason.NO_MAP_DATA
         powerDoc || waterDoc -> LandReason.UTILITIES_DOCS
         else -> LandReason.UTILITIES
@@ -399,6 +485,51 @@ fun growthTile(c: LandCheck, hasKey: Boolean): TileResult {
     }
 }
 
+/** 2.3.0: railway line / level crossing / station near the plot. GOOD = no railway line close to the plot. */
+fun railwayTile(c: LandCheck): TileResult {
+    if (!c.osmOk) return TileResult(LandTile.RAILWAY, LandRating.UNKNOWN, LandReason.NO_MAP_DATA)
+    if (c.layersVersion < LandRules.LAYERS_VERSION) return TileResult(LandTile.RAILWAY, LandRating.UNKNOWN, LandReason.NOT_CHECKED)
+    if (c.layerFailed(OsmLayer.RAIL)) return TileResult(LandTile.RAILWAY, LandRating.UNKNOWN, LandReason.LAYER_FAILED)
+    val line = c.nearest(Cat.RAIL_LINE)
+    val notes = mutableListOf<Note>()
+    c.nearest(Cat.LEVEL_CROSSING)?.takeIf { it.distanceM <= 1500 }?.let { notes += Note("crossing", listOf(distText(it.distanceM))) }
+    c.nearest(Cat.RAIL)?.let { notes += Note("station", listOf(it.name.ifBlank { it.kind }, distText(it.distanceM))) }
+    return when {
+        line == null -> TileResult(LandTile.RAILWAY, LandRating.GOOD, LandReason.NO_RAIL, emptyList(), notes)
+        line.distanceM <= LandRules.RAIL_NOC_M -> TileResult(LandTile.RAILWAY, LandRating.POOR, LandReason.RAIL_NOC, listOf(distText(line.distanceM), line.name), notes)
+        line.distanceM <= LandRules.RAIL_NEAR_M -> TileResult(LandTile.RAILWAY, LandRating.FAIR, LandReason.RAIL_NEAR, listOf(distText(line.distanceM), line.name), notes)
+        else -> TileResult(LandTile.RAILWAY, LandRating.GOOD, LandReason.RAIL_CLEAR, listOf(distText(line.distanceM), line.name), notes)
+    }
+}
+
+/** True for the kinds of protected area that get an eco-sensitive zone (national parks and wildlife sanctuaries). */
+fun eszKind(kind: String): Boolean = kind in setOf("national_park", "wildlife_sanctuary", "tiger_reserve", "protected_area", "nature_reserve")
+
+/** 2.3.0: protected areas, eco-sensitive zone and forest land. GOOD = none near. */
+fun ecoTile(c: LandCheck): TileResult {
+    if (!c.osmOk) return TileResult(LandTile.ECO, LandRating.UNKNOWN, LandReason.NO_MAP_DATA)
+    if (c.layersVersion < LandRules.LAYERS_VERSION) return TileResult(LandTile.ECO, LandRating.UNKNOWN, LandReason.NOT_CHECKED)
+    val lulcForest = c.lulc.firstOrNull { lulcKind(it) == LulcKind.FOREST }
+    if (c.layerFailed(OsmLayer.PROTECTED) && c.layerFailed(OsmLayer.LANDUSE)) {
+        return if (lulcForest != null) TileResult(LandTile.ECO, LandRating.FAIR, LandReason.NEAR_FOREST, listOf("0 m", lulcLabel(lulcForest)), listOf(Note("lulc_forest", listOf(lulcLabel(lulcForest)))))
+        else TileResult(LandTile.ECO, LandRating.UNKNOWN, LandReason.LAYER_FAILED)
+    }
+    val pa = c.features.filter { it.category == Cat.PROTECTED }.minByOrNull { it.distanceM }
+    val forest = c.nearest(Cat.FOREST)
+    val notes = mutableListOf<Note>()
+    if (lulcForest != null) notes += Note("lulc_forest", listOf(lulcLabel(lulcForest)))
+    fun nm(f: LandFeature) = f.name.ifBlank { f.kind.replace('_', ' ') }
+    return when {
+        pa != null && pa.distanceM <= 0.0 -> TileResult(LandTile.ECO, LandRating.POOR, LandReason.INSIDE_PROTECTED, listOf(nm(pa), pa.kind), notes)
+        forest != null && forest.distanceM <= 0.0 -> TileResult(LandTile.ECO, LandRating.POOR, LandReason.INSIDE_PROTECTED, listOf(nm(forest), "forest"), notes)
+        pa != null && eszKind(pa.kind) && pa.distanceM <= LandRules.ESZ_MIN_M -> TileResult(LandTile.ECO, LandRating.POOR, LandReason.ESZ_LIKELY, listOf(nm(pa), distText(pa.distanceM)), notes)
+        pa != null && pa.distanceM <= LandRules.ESZ_MAX_M -> TileResult(LandTile.ECO, LandRating.FAIR, LandReason.ESZ_POSSIBLE, listOf(nm(pa), distText(pa.distanceM)), notes)
+        forest != null && forest.distanceM <= LandRules.FOREST_NEAR_M -> TileResult(LandTile.ECO, LandRating.FAIR, LandReason.NEAR_FOREST, listOf(distText(forest.distanceM), nm(forest)), notes)
+        lulcForest != null -> TileResult(LandTile.ECO, LandRating.FAIR, LandReason.NEAR_FOREST, listOf("0 m", lulcLabel(lulcForest)), notes)
+        else -> TileResult(LandTile.ECO, LandRating.GOOD, LandReason.NO_PROTECTED, listOf(distText(LandRules.ESZ_MAX_M)), notes)
+    }
+}
+
 /** The banner on top: the main risk in plain words (usable vs paid area). */
 data class LandBanner(
     val level: LandRating,
@@ -410,8 +541,10 @@ data class LandBanner(
     val risk: TileResult,
 )
 
-data class LandAssessment(val banner: LandBanner, val tiles: List<TileResult>) {
-    fun tile(t: LandTile) = tiles.first { it.tile == t }
+/** [tiles]: the six 2.2.0 tiles; [extra]: the 2.3.0 Railway and Protected-area tiles (shown after them). */
+data class LandAssessment(val banner: LandBanner, val tiles: List<TileResult>, val extra: List<TileResult> = emptyList()) {
+    fun tile(t: LandTile) = (tiles + extra).first { it.tile == t }
+    val allTiles: List<TileResult> get() = tiles + extra
 }
 
 fun assessLand(c: LandCheck, p: Property, hasKey: Boolean): LandAssessment {
@@ -421,7 +554,7 @@ fun assessLand(c: LandCheck, p: Property, hasKey: Boolean): LandAssessment {
     val buf = maxOf(c.bufferPct ?: 0.0, c.waterPct ?: 0.0).let { if (it <= 0.0 && risk.reason == LandReason.PLOT_ON_WATER) 100.0 else it }
     val paidC = paid?.let(::sqmToCents)
     val tiles = listOf(boundaryTile(c, p), connectivityTile(c), risk, localityTile(c), utilityTile(c, p.docs), growthTile(c, hasKey))
-    return LandAssessment(LandBanner(risk.rating, buf, paidC, paidC?.let { it * (1 - buf / 100.0) }, risk), tiles)
+    return LandAssessment(LandBanner(risk.rating, buf, paidC, paidC?.let { it * (1 - buf / 100.0) }, risk), tiles, listOf(railwayTile(c), ecoTile(c)))
 }
 
 /** Zoning hint: OSM landuse at the pin, then the AI's master-plan zoning (labelled as such in the UI). */
@@ -483,10 +616,49 @@ fun ringPoints(lat: Double, lng: Double, radiusM: Double = 500.0): List<Pair<Dou
 
 fun medianOf(v: List<Double>): Double? = com.hark.sothudiary.domain.pricing.median(v)
 
+/** 2.3.0: free web search queries for the land check's AI fallback (zoning, roads, growth). */
+fun landSearchQueries(rev: com.hark.sothudiary.domain.GeoPlace?, hint: String): List<String> {
+    val local = listOfNotNull(rev?.locality?.takeIf { it.isNotBlank() }, hint.split(',').firstOrNull()?.trim()?.takeIf { it.isNotBlank() }).firstOrNull().orEmpty()
+    val district = rev?.district.orEmpty().ifBlank { hint.split(',').map { it.trim() }.lastOrNull().orEmpty() }
+    val place = listOf(local, district).filter { it.isNotBlank() }.distinct().joinToString(" ")
+    if (place.isBlank()) return emptyList()
+    return listOf("$place master plan land use zone DTCP", "$place ring road bypass new highway project", "$place development new layouts industrial park growth")
+}
+
 /**
- * Runs the land check for [p] (it must have a pin): OpenStreetMap layers (Overpass) and elevation (Open-Meteo) in
- * parallel with the grounded AI search (only when a Gemini key is set). A part that fails keeps what an earlier check
- * found for the same pin ([previous]) and records its error, like the price check keeps earlier rates.
+ * 2.3.0: fills the layers that failed this time from the earlier check of the same spot ([prev]), so a busy server
+ * does not wipe out what was already known. Returns the merged check (failed layers that could be filled are listed
+ * in [LandCheck.osmKeptLayers] and no longer in [LandCheck.osmFailedLayers]).
+ */
+fun keepEarlierLayers(c: LandCheck, prev: LandCheck?): LandCheck {
+    if (prev == null || !prev.osmOk || c.osmFailedLayers.isEmpty()) return c
+    val kept = mutableListOf<String>()
+    var out = c
+    for (layer in c.osmFailedLayers) {
+        if (layer in prev.osmFailedLayers) continue
+        // A 2.2.x check never had these layers.
+        if ((layer == OsmLayer.RAIL || layer == OsmLayer.PROTECTED) && prev.layersVersion < LandRules.LAYERS_VERSION) continue
+        val cats = OsmLayer.categories(layer)
+        out = when (layer) {
+            OsmLayer.WATER -> out.copy(
+                features = out.features.filterNot { it.category in cats } + prev.features.filter { it.category in cats },
+                bufferPct = prev.bufferPct, waterPct = prev.waterPct, nearestWaterM = prev.nearestWaterM,
+                nearestWaterName = prev.nearestWaterName, nearestWaterKind = prev.nearestWaterKind, waterOutlines = prev.waterOutlines,
+            )
+            OsmLayer.LANDUSE -> out.copy(landuse = prev.landuse,
+                features = out.features + prev.features.filter { (it.category == Cat.PROTECTED || it.category == Cat.FOREST) && it.distanceM <= 0.0 && out.features.none { f -> f.category == it.category && f.name == it.name } })
+            else -> out.copy(features = out.features.filterNot { it.category in cats } + prev.features.filter { it.category in cats })
+        }
+        kept += layer
+    }
+    return out.copy(osmFailedLayers = c.osmFailedLayers - kept.toSet(), osmKeptLayers = kept)
+}
+
+/**
+ * Runs the land check for [p] (it must have a pin): OpenStreetMap layers (Overpass, 2.3.0: seven small queries raced
+ * across the free servers within [LandRules.OSM_BUDGET_MS]), elevation (Open-Meteo), ISRO Bhuvan land use, all in
+ * parallel with the grounded AI search (only when a Gemini key is set; 2.3.0: falls back to a free web search).
+ * A part that fails keeps what an earlier check found for the same pin ([previous]) and records its error.
  */
 suspend fun runLandCheck(p: Property, apiKey: String, model: String, typeText: String, previous: LandCheck?, now: Long = nowMillis()): LandCheck? {
     val lat = p.lat ?: return null
@@ -499,45 +671,77 @@ suspend fun runLandCheck(p: Property, apiKey: String, model: String, typeText: S
     return coroutineScope {
         val osmJob = async {
             val radius = maxOf(LandRules.WATER_RADIUS_M, (kotlin.math.sqrt(area / PI) + 300).toInt())
-            fetchOverpass(buildOverpassQuery(lat, lng, radius))
+            runCatching { fetchOsmLayers(buildLayerQueries(lat, lng, radius), LandRules.OSM_BUDGET_MS) }
+                .getOrElse { LayeredOsm(emptyList(), emptyList(), OsmLayer.ALL.associateWith { "network" }) }
         }
-        val elevJob = async { runCatching { fetchElevations(listOf(lat to lng) + ringPoints(lat, lng)) }.getOrNull() }
+        val elevJob = async { runCatching { kotlinx.coroutines.withTimeoutOrNull(25_000) { fetchElevations(listOf(lat to lng) + ringPoints(lat, lng)) } }.getOrNull() }
+        val lulcJob = async {
+            val pts = listOf(lat to lng) + (if (outline?.second == true) plot.take(4).map { it.lat to it.lng } else emptyList())
+            runCatching { kotlinx.coroutines.withTimeoutOrNull(25_000) { Bhuvan.landUse(pts) } }.getOrNull()
+        }
         val aiJob = if (apiKey.isBlank()) null else async {
             val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
             val hint = listOf(p.locality, p.taluk, p.district).filter { it.isNotBlank() }.joinToString(", ").ifBlank { p.address }
             val areaText = if (area > 0) "${dec1(sqmToCents(area))} cents (${dec1(sqmToCents(area) / 100)} acres)" else "size not known"
-            runCatching { groundedGenerate(apiKey, model, buildLandPrompt(describePlace(rev, hint), lat, lng, areaText, typeText), now) }.getOrNull()
+            runCatching {
+                kotlinx.coroutines.withTimeoutOrNull(LandRules.AI_BUDGET_MS) {
+                    groundedGenerate(apiKey, model, buildLandPrompt(describePlace(rev, hint), lat, lng, areaText, typeText), now, landSearchQueries(rev, hint))
+                } ?: Grounded.Failed("[other] The AI web search took too long.", 0L, "auto")
+            }.getOrNull()
         }
         val osm = osmJob.await()
         val elev = elevJob.await()
+        val lulc = lulcJob.await()
         val ai = aiJob?.await()
 
         var c = LandCheck(
             propertyId = p.id, key = key, lat = lat, lng = lng, fetchedAt = now,
-            plot = plot, drawn = outline?.second == true, plotAreaSqm = area,
+            plot = plot, drawn = outline?.second == true, plotAreaSqm = area, layersVersion = LandRules.LAYERS_VERSION,
         )
-        c = if (osm.error == null) {
+        c = if (osm.anyOk) {
             val f = osmFacts(osm.elements, lat, lng, plot)
-            c.copy(osmOk = true, features = f.features, bufferPct = f.bufferPct, waterPct = f.waterPct, nearestWaterM = f.nearestWaterM,
-                nearestWaterName = f.nearestWaterName, nearestWaterKind = f.nearestWaterKind, waterOutlines = f.waterOutlines, landuse = f.landuse)
+            keepEarlierLayers(
+                c.copy(osmOk = true, features = f.features, bufferPct = f.bufferPct, waterPct = f.waterPct, nearestWaterM = f.nearestWaterM,
+                    nearestWaterName = f.nearestWaterName, nearestWaterKind = f.nearestWaterKind, waterOutlines = f.waterOutlines, landuse = f.landuse,
+                    osmFailedLayers = osm.failed.keys.toList(), osmError = if (osm.failed.isEmpty()) null else osm.failed.values.first()),
+                sameSpot,
+            )
         } else if (sameSpot != null && sameSpot.osmOk) {
             sameSpot.copy(fetchedAt = sameSpot.fetchedAt, osmError = osm.error)
         } else c.copy(osmOk = false, osmError = osm.error)
         if (elev != null && elev.size == 9) c = c.copy(elevationM = elev[0], surroundingElevationM = medianOf(elev.drop(1)))
         else if (sameSpot != null) c = c.copy(elevationM = sameSpot.elevationM, surroundingElevationM = sameSpot.surroundingElevationM)
+        c = when {
+            lulc != null -> c.copy(lulc = lulc, lulcError = null)
+            sameSpot != null && sameSpot.lulc.isNotEmpty() -> c.copy(lulc = sameSpot.lulc, lulcError = "network")
+            else -> c.copy(lulcError = "network")
+        }
         c = when (ai) {
             null -> if (apiKey.isBlank()) c.copy(ai = sameSpot?.ai, aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty())
             else c.copy(ai = sameSpot?.ai, aiError = "network", aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty())
             is Grounded.Ok -> {
-                val parsed = parseLandAi(ai.text)
-                if (parsed == null) c.copy(ai = sameSpot?.ai, aiError = "[other] The AI reply had no readable result.", aiModel = ai.model, aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty())
-                else c.copy(ai = parsed, aiModel = ai.model, aiFetchedAt = now, sources = ai.sources.take(12))
+                val parsed = parseLandAi(ai.text)?.let { if (ai.viaSearch) onlyCitedResults(it, ai.hits) else it }
+                if (parsed == null) c.copy(ai = sameSpot?.ai, aiError = "[other] The AI reply had no readable result.", aiModel = ai.model, aiFetchedAt = sameSpot?.aiFetchedAt ?: 0,
+                    sources = sameSpot?.sources.orEmpty(), webSnippets = if (ai.viaSearch) ai.hits.take(8) else emptyList())
+                else c.copy(ai = parsed, aiModel = ai.model, aiFetchedAt = now, sources = ai.sources.take(12), aiViaSearch = ai.viaSearch)
             }
             is Grounded.Failed -> c.copy(ai = sameSpot?.ai, aiError = ai.error, aiRetryAt = ai.retryAt, aiModel = ai.model,
-                aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty())
+                aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty(), webSnippets = ai.snippets.take(8))
         }
         c
     }
+}
+
+/** 2.3.0: with our own web search, an item counts only when it cites one of the pages we fetched. */
+fun onlyCitedResults(a: LandAi, hits: List<WebSnippet>): LandAi {
+    fun ok(u: String) = u.isNotBlank() && com.hark.sothudiary.domain.web.citesResult(u, hits)
+    return a.copy(
+        zoning = if (ok(a.zoningUrl)) a.zoning else "unknown", zoningUrl = a.zoningUrl.takeIf(::ok).orEmpty(),
+        zoningPlan = if (ok(a.zoningUrl)) a.zoningPlan else "", zoningNote = if (ok(a.zoningUrl)) a.zoningNote else "",
+        roads = a.roads.filter { ok(it.url) },
+        growth = if (ok(a.growthUrl)) a.growth else "unknown", growthUrl = a.growthUrl.takeIf(::ok).orEmpty(),
+        growthReason = if (ok(a.growthUrl)) a.growthReason else "",
+    )
 }
 
 /** Every web page behind the result (OSM / Open-Meteo credit and the AI's sources), for the Sources list. */

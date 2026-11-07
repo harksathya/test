@@ -256,6 +256,8 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
                     val failed = latest?.error
                     if (failed != null && failed != "no_key") LookupErrorNote(failed, latest.retryAt)
                     else lookupMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                    // 2.3.0: free web search results when Gemini could not read them.
+                    if (latest != null && latest.snippets.isNotEmpty()) WebSnippetList(latest.snippets) { ctx.platform.openUrl(it) }
                     if (est.comparables.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

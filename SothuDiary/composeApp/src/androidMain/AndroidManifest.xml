@@ -72,6 +72,22 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
             </intent-filter>
+            <!-- 2.3.0: a shared property link – custom scheme (opened by the share page / an Android intent link) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sothudiary" android:host="p" />
+            </intent-filter>
+            <!-- 2.3.0: the https share page. App Links verification would need /.well-known/assetlinks.json at the
+                 root of harksathya.github.io (a separate user-site repo), so this link is not auto-verified: it opens
+                 the page (which hands over to the app) unless "Open supported links" is turned on for the app. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="harksathya.github.io" android:pathPrefix="/test/p" />
+            </intent-filter>
         </activity>
 
         <!-- Daily 9 AM follow-up reminder; rescheduled after reboot / app update -->

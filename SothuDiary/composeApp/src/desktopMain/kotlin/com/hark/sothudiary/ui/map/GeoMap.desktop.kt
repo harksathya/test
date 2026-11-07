@@ -31,6 +31,8 @@ actual fun GeoMap(
     onPinClick: ((String) -> Unit)?,
     fitAroundCenter: Boolean,
     shapes: List<MapShape>,
+    onPinDragging: ((String, Double, Double) -> Unit)?,
+    sketch: MapSketch?,
 ) {
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
         @Suppress("NAME_SHADOWING")
@@ -60,8 +62,13 @@ actual fun GeoMap(
                 pins.forEach { p ->
                     val x = if (pins.size == 1 && shapePts.isEmpty()) size.width / 2 else ((p.lng - minLng) / dLng * size.width).toFloat()
                     val y = if (pins.size == 1 && shapePts.isEmpty()) size.height / 2 else ((maxLat - p.lat) / dLat * size.height).toFloat()
-                    drawCircle(Color(p.color), radius = if (p.small) 6f else 10f, center = Offset(x, y))
-                    drawCircle(Color.White, radius = 3f, center = Offset(x, y))
+                    if (p.handle) {
+                        drawCircle(Color.White, radius = 5f, center = Offset(x, y))
+                        drawCircle(Color(p.color), radius = 5f, center = Offset(x, y), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+                    } else {
+                        drawCircle(Color(p.color), radius = if (p.small) 6f else 10f, center = Offset(x, y))
+                        drawCircle(Color.White, radius = 3f, center = Offset(x, y))
+                    }
                 }
             }
         }

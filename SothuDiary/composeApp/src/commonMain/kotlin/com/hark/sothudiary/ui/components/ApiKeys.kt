@@ -70,8 +70,10 @@ fun GeminiSetupCard(ctx: AppContext, onDismiss: (() -> Unit)?) {
                     Text(S.save.s())
                 }
                 Spacer(Modifier.weight(1f))
-                if (onDismiss != null) TextButton(onClick = onDismiss) { Text(S.later.s()) }
+                // 2.3.0: an explicit, friendly skip – everything that does not need Gemini works without a key.
+                if (onDismiss != null) OutlinedButton(onClick = onDismiss) { Text(S.skipForNow.s()) }
             }
+            if (onDismiss != null) Text(S.skipKeyBody.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -92,6 +94,6 @@ fun GeminiKeyDialog(current: String, onDismiss: () -> Unit, onSave: (String) -> 
             }
         },
         confirmButton = { TextButton(onClick = { onSave(key.trim()) }, enabled = key.isNotBlank()) { Text(S.save.s()) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(S.cancel.s()) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(S.skipForNow.s()) } },
     )
 }

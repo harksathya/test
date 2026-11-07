@@ -268,6 +268,48 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
 
     fun clearLandChecks() = update { d -> d.copy(landChecks = emptyList()) }
 
+    /** 2.3.0: saves the survey number the user found (TNGIS / FMB / patta). */
+    fun setSurveyNumber(propertyId: String, survey: String) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(surveyNumber = com.hark.sothudiary.domain.land.normalizeSurveyNumber(survey).take(40), updatedAt = nowMillis()) else it })
+    }
+
+    /** 2.3.0: saves (or removes, null) the FMB sketch laid over the map. */
+    fun setSketch(propertyId: String, sketch: SketchOverlay?) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(sketch = sketch) else it })
+    }
+
+    /**
+     * 2.3.0: adds a property received through a share link. [mode] ADD_NEW never touches an existing record (a new id
+     * when the id is taken); UPDATE_EXISTING refreshes only the listing details of the record with the same id.
+     * Returns the id of the saved property.
+     */
+    fun importShared(sp: com.hark.sothudiary.domain.share.SharedProperty, mode: com.hark.sothudiary.domain.share.ImportMode): String {
+        var savedId = sp.p.id
+        update { d ->
+            val now = nowMillis()
+            val existing = d.properties.firstOrNull { it.id == sp.p.id }
+            val saved = com.hark.sothudiary.domain.share.mergeShared(existing, sp.p, mode, now, ::newId, sp.by)
+            savedId = saved.id
+            var brokers = d.brokers
+            var withBroker = saved
+            // The sender's broker (when included) is added once, matched by phone, and linked to a new property.
+            if (sp.bn.isNotBlank() && (mode == com.hark.sothudiary.domain.share.ImportMode.ADD_NEW || saved.brokerId == null)) {
+                val digits = sp.bp.filter { it.isDigit() }.takeLast(10)
+                val match = brokers.firstOrNull { digits.isNotEmpty() && it.phone.filter { c -> c.isDigit() }.takeLast(10) == digits }
+                val b = match ?: Broker(id = newId(), name = sp.bn.take(60), phone = sp.bp.take(20), createdAt = now)
+                if (match == null) brokers = brokers + b
+                withBroker = saved.copy(brokerId = b.id)
+            }
+            val props = if (d.properties.any { it.id == withBroker.id }) d.properties.map { if (it.id == withBroker.id) withBroker else it }
+            else listOf(withBroker) + d.properties
+            val lc = com.hark.sothudiary.domain.share.importedLandCheck(sp.lc, withBroker)
+            val mine = d.landChecks.firstOrNull { it.propertyId == withBroker.id }
+            val checks = if (lc != null && (mine == null || mine.fetchedAt < lc.fetchedAt)) d.landChecks.filterNot { it.propertyId == withBroker.id } + lc else d.landChecks
+            d.copy(properties = props, brokers = brokers, landChecks = checks)
+        }
+        return savedId
+    }
+
     fun clearLookups() = update { d -> d.copy(rateLookups = emptyList(), onlineRates = emptyList()) }
 
     fun setMusic(enabled: Boolean = data.settings.bgmEnabled, volume: Float = data.settings.bgmVolume, file: String = data.settings.bgmFile) = update { d ->

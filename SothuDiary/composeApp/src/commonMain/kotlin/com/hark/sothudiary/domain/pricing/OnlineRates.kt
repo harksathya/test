@@ -4,6 +4,11 @@ import com.hark.sothudiary.data.AppData
 import com.hark.sothudiary.data.OnlineRate
 import com.hark.sothudiary.data.RateKind
 import com.hark.sothudiary.data.RateLookup
+import com.hark.sothudiary.data.WebSnippet
+import com.hark.sothudiary.data.normalizeGeminiModel
+import com.hark.sothudiary.domain.web.WebSearch
+import com.hark.sothudiary.domain.web.citesResult
+import com.hark.sothudiary.domain.web.promptWithResults
 import com.hark.sothudiary.data.newId
 import com.hark.sothudiary.data.nowMillis
 import com.hark.sothudiary.domain.GeoPlace
@@ -104,16 +109,55 @@ private fun JsonObject.s(key: String): String = (this[key] as? JsonPrimitive)?.c
 /** What kind of failure a live lookup hit – drives the short, friendly message shown to the user. */
 enum class LookupErrorKind { QUOTA, BAD_KEY, NETWORK, MODEL_UNAVAILABLE, NO_KEY, OTHER }
 
-/** A failed Gemini call: HTTP code, google.rpc status, the API's own message and the suggested wait (seconds). */
-data class GeminiError(val code: Int, val status: String, val message: String, val retryDelaySec: Int?)
+/**
+ * A failed Gemini call: HTTP code, google.rpc status, the API's own message and the suggested wait (seconds).
+ * 2.3.0: [quotaId] / [quotaValue] from the QuotaFailure details (e.g. "GenerateRequestsPerDayPerProjectPerModel-FreeTier", "20").
+ */
+data class GeminiError(val code: Int, val status: String, val message: String, val retryDelaySec: Int?, val quotaId: String = "", val quotaValue: String = "")
 
 /** Parses a Gemini error response (also when the body is not JSON). */
 fun parseGeminiError(code: Int, body: String?): GeminiError {
     val root = parseJsonOrNull(body ?: "")
     val msg = root.at("error", "message").str() ?: "HTTP $code"
     val status = root.at("error", "status").str().orEmpty()
-    val fromDetails = root.at("error", "details").arr().firstNotNullOfOrNull { it["retryDelay"].str() }
-    return GeminiError(code, status, msg, parseRetryDelay(fromDetails) ?: parseRetryDelay(msg))
+    val details = root.at("error", "details").arr()
+    val fromDetails = details.firstNotNullOfOrNull { it["retryDelay"].str() }
+    val violation = details.flatMap { it["violations"].arr() }.firstOrNull()
+    val quotaValue = violation?.get("quotaValue")?.let { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
+    return GeminiError(code, status, msg, parseRetryDelay(fromDetails) ?: parseRetryDelay(msg), violation["quotaId"].str().orEmpty(), quotaValue)
+}
+
+/** 2.3.0: which quota a 429 hit – decides how long the model is skipped. */
+enum class QuotaWindow {
+    /** Requests per minute: back after the retry delay. */
+    MINUTE,
+    /** Requests per day: back after midnight Pacific time. */
+    DAY,
+    /** "limit: 0" – this model (or Google Search grounding on it) is not in the key's tier at all. */
+    NOT_IN_TIER,
+    UNKNOWN,
+}
+
+fun quotaWindow(e: GeminiError): QuotaWindow = when {
+    e.quotaValue == "0" || Regex("""limit:\s*0\b""").containsMatchIn(e.message) -> QuotaWindow.NOT_IN_TIER
+    e.quotaId.contains("PerDay", true) || e.message.contains("per day", true) -> QuotaWindow.DAY
+    e.quotaId.contains("PerMinute", true) || e.message.contains("per minute", true) -> QuotaWindow.MINUTE
+    else -> QuotaWindow.UNKNOWN
+}
+
+/** Free-tier daily quotas reset at midnight Pacific time; 08:00 UTC is that midnight in winter (and 1 am in summer). */
+fun nextPacificMidnight(now: Long): Long {
+    val day = 24L * 60 * 60 * 1000
+    val offset = 8L * 60 * 60 * 1000
+    return ((now - offset) / day + 1) * day + offset
+}
+
+/** How long to skip a model after a quota error. */
+fun quotaSkipUntil(e: GeminiError, now: Long): Long = when (quotaWindow(e)) {
+    QuotaWindow.MINUTE -> now + maxOf(60, e.retryDelaySec ?: 60) * 1000L
+    QuotaWindow.DAY -> nextPacificMidnight(now)
+    QuotaWindow.NOT_IN_TIER -> now + 24L * 60 * 60 * 1000
+    QuotaWindow.UNKNOWN -> now + maxOf(QUOTA_MEMORY_MS, (e.retryDelaySec ?: 0) * 1000L)
 }
 
 /** "37s", "37.5s" or "… Please retry in 37.12s." -> 38 (seconds, rounded up). */
@@ -171,15 +215,16 @@ private const val QUOTA_MEMORY_MS = 60L * 60 * 1000
 /** Models that hit their (free-tier) quota recently, per key: model -> blocked until (epoch ms). Session memory. */
 private val exhaustedUntil = mutableMapOf<String, Long>()
 
-private fun quotaKey(apiKey: String, model: String) = apiKey.trim().takeLast(8) + "|" + model
+/** [mode]: "g" grounded with Google Search, "p" plain generation (2.3.0) – separate quotas on the free tier. */
+private fun quotaKey(apiKey: String, model: String, mode: String = "g") = apiKey.trim().takeLast(8) + "|" + model + (if (mode == "g") "" else "|$mode")
 
-internal fun markExhausted(apiKey: String, model: String, now: Long, retryDelaySec: Int?) {
+internal fun markExhausted(apiKey: String, model: String, now: Long, retryDelaySec: Int?, mode: String = "g", until: Long? = null) {
     val wait = maxOf(QUOTA_MEMORY_MS, (retryDelaySec ?: 0) * 1000L)
-    exhaustedUntil[quotaKey(apiKey, model)] = now + wait
+    exhaustedUntil[quotaKey(apiKey, model, mode)] = until ?: (now + wait)
 }
 
-internal fun exhaustedAt(apiKey: String, model: String, now: Long): Long? =
-    exhaustedUntil[quotaKey(apiKey, model)]?.takeIf { it > now }
+internal fun exhaustedAt(apiKey: String, model: String, now: Long, mode: String = "g"): Long? =
+    exhaustedUntil[quotaKey(apiKey, model, mode)]?.takeIf { it > now }
 
 internal fun clearQuotaMemory() = exhaustedUntil.clear()
 
@@ -212,6 +257,28 @@ private fun requestBody(prompt: String, legacyRetrieval: Boolean): String = buil
     put("generationConfig", buildJsonObject { put("temperature", 0.1) })
 }.toString()
 
+/** 2.3.0: an ordinary generation request (no tools) – used with our own web search results in the prompt. */
+private fun plainBody(prompt: String): String = buildJsonObject {
+    put("contents", buildJsonArray { add(buildJsonObject { put("parts", buildJsonArray { add(buildJsonObject { put("text", prompt) }) }) }) })
+    put("generationConfig", buildJsonObject { put("temperature", 0.1) })
+}.toString()
+
+/**
+ * 2.3.0: model order for GROUNDED calls. Google Search grounding is free (500 requests a day, shared) only on the
+ * Gemini 2.5 Flash / Flash-Lite models; on Gemini 3 and newer it is "not available" on the free tier and every call
+ * fails with 429 "limit: 0" – which is why the price check always said "quota exhausted" on free keys (Auto picked
+ * the newest Flash first). So 2.5 Flash and Flash-Lite go first, then the normal order ([pickModels]).
+ */
+internal fun groundedModelOrder(ids: List<String>): List<String> {
+    val free = ids.filter { Regex("""^gemini-2\.5-flash(-lite)?(-\d{3})?$""").matches(it) }
+        .sortedWith(compareBy({ if ("lite" in it) 1 else 0 }, { it.length }))
+    return (free + pickModels(ids)).distinct().take(6)
+}
+
+/** At most this many grounded calls per lookup (each failed call can still count against a free key's quota). */
+const val MAX_GROUNDED_CALLS = 3
+const val MAX_PLAIN_CALLS = 3
+
 /** Models that still take the older "google_search_retrieval" grounding tool. */
 internal fun legacyRetrievalModels(ids: List<String>): List<String> =
     ids.filter { it.startsWith("gemini-1.5-flash") || it.startsWith("gemini-1.0") || it.startsWith("gemini-1.5-pro") }
@@ -219,10 +286,17 @@ internal fun legacyRetrievalModels(ids: List<String>): List<String> =
 
 /** Outcome of a grounded Gemini call ([groundedGenerate]). */
 sealed class Grounded {
-    /** [model] is the model that answered ("… (search retrieval)" for the older grounding tool). */
-    data class Ok(val text: String, val sources: List<String>, val model: String) : Grounded()
-    /** [error] is "no_key", "network", "failed" or a tagged error ([taggedError]); [model] the first model tried. */
-    data class Failed(val error: String, val retryAt: Long, val model: String) : Grounded()
+    /**
+     * [model] is the model that answered ("… (search retrieval)" for the older grounding tool, "… (web search)" for
+     * the 2.3.0 fallback). [viaSearch]: the answer is from our own web search results ([sources] are those pages).
+     */
+    data class Ok(val text: String, val sources: List<String>, val model: String, val viaSearch: Boolean = false,
+                  val hits: List<WebSnippet> = emptyList()) : Grounded()
+    /**
+     * [error] is "no_key", "network", "failed" or a tagged error ([taggedError]); [model] the first model tried.
+     * [snippets]: 2.3.0 – web search results found when Gemini could not read them (shown as they are).
+     */
+    data class Failed(val error: String, val retryAt: Long, val model: String, val snippets: List<WebSnippet> = emptyList()) : Grounded()
 }
 
 /**
@@ -233,8 +307,65 @@ sealed class Grounded {
  * then Flash-Lite, then previews. A model out of (free-tier) quota is skipped and remembered for about an hour, so a
  * Refresh does not hammer it. Every call is grounded with Google Search; there is never an ungrounded call.
  */
-suspend fun groundedGenerate(apiKey: String, model: String, prompt: String, now: Long = nowMillis()): Grounded {
+suspend fun groundedGenerate(apiKey: String, model: String, prompt: String, now: Long = nowMillis(), searchQueries: List<String> = emptyList()): Grounded {
     if (apiKey.isBlank()) return Grounded.Failed("no_key", 0L, "auto")
+    val g = groundedOnly(apiKey, model, prompt, now)
+    if (g is Grounded.Ok || searchQueries.isEmpty()) return g
+    g as Grounded.Failed
+    // A bad key or no internet: a web search does not help.
+    val kind = classifyLookupError(g.error)
+    if (g.error == "network" || kind == LookupErrorKind.BAD_KEY || kind == LookupErrorKind.NO_KEY || kind == LookupErrorKind.NETWORK) return g
+    return searchFallback(apiKey, model, prompt, searchQueries, g, now)
+}
+
+/**
+ * 2.3.0 fallback when grounded calls are not possible (quota / grounding not in the free tier / model gone): our own
+ * free web search ([WebSearch]) and an ordinary Gemini call that may only use and cite those results. When Gemini
+ * cannot answer either, the search results come back in [Grounded.Failed.snippets] to be shown as they are.
+ */
+private suspend fun searchFallback(apiKey: String, model: String, prompt: String, queries: List<String>, grounded: Grounded.Failed, now: Long): Grounded {
+    val hits = runCatching { WebSearch.searchAll(queries) }.getOrDefault(emptyList())
+    if (hits.isEmpty()) return grounded
+    val text = promptWithResults(prompt, hits)
+    val body = plainBody(text)
+    val models = mutableListOf<String>()
+    normalizeGeminiModel(model).takeIf { it != "auto" }?.let { models += it }
+    cachedPlainModel?.let { if (it !in models) models += it }
+    listGeminiModels(apiKey)?.let { avail -> pickModels(avail).forEach { if (it !in models) models += it } }
+    var calls = 0
+    var last: GeminiError? = null
+    var retryDelay: Int? = null
+    for (m in models) {
+        if (calls >= MAX_PLAIN_CALLS) break
+        if (exhaustedAt(apiKey, m, now, "p") != null) continue
+        calls++
+        when (val r = callGemini(apiKey, m, body)) {
+            is CallResult.Offline -> return Grounded.Failed("network", 0L, m, hits)
+            is CallResult.Ok -> if (r.text.isNotBlank()) {
+                cachedPlainModel = m
+                return Grounded.Ok(r.text, hits.map { it.url }, "$m (web search)", viaSearch = true, hits = hits)
+            }
+            is CallResult.Fail -> {
+                last = r.e
+                if (isQuotaError(r.e.code, r.e.status, r.e.message)) {
+                    r.e.retryDelaySec?.let { retryDelay = maxOf(retryDelay ?: 0, it) }
+                    markExhausted(apiKey, m, now, r.e.retryDelaySec, "p", quotaSkipUntil(r.e, now))
+                } else if (!isModelUnavailableError(r.e.code, r.e.message)) break
+            }
+        }
+    }
+    val e = last
+    val err = when {
+        e == null -> grounded.error
+        isQuotaError(e.code, e.status, e.message) -> taggedError(LookupErrorKind.QUOTA, e.message)
+        isBadKeyError(e.code, e.status, e.message) -> taggedError(LookupErrorKind.BAD_KEY, e.message)
+        else -> grounded.error
+    }
+    return Grounded.Failed(err, retryDelay?.let { now + it * 1000L } ?: grounded.retryAt, grounded.model, hits)
+}
+
+/** The grounded part of [groundedGenerate] (Google Search tool, model fallback). */
+private suspend fun groundedOnly(apiKey: String, model: String, prompt: String, now: Long): Grounded {
     val body = requestBody(prompt, legacyRetrieval = false)
     val models = mutableListOf<String>()
     com.hark.sothudiary.data.normalizeGeminiModel(model).takeIf { it != "auto" }?.let { models += it }
@@ -247,8 +378,10 @@ suspend fun groundedGenerate(apiKey: String, model: String, prompt: String, now:
     var retryDelay: Int? = null
     val skippedForQuota = mutableListOf<String>()
     var i = 0
+    var calls = 0
 
     suspend fun attempt(m: String, legacy: Boolean): Grounded.Ok? {
+        calls++
         when (val res = callGemini(apiKey, m, if (legacy) requestBody(prompt, true) else body)) {
             is CallResult.Offline -> { offline = true; return null }
             is CallResult.Fail -> {
@@ -256,8 +389,8 @@ suspend fun groundedGenerate(apiKey: String, model: String, prompt: String, now:
                 lastError = e
                 if (isQuotaError(e.code, e.status, e.message)) {
                     quotaHits++
-                    if (e.retryDelaySec != null) retryDelay = maxOf(retryDelay ?: 0, e.retryDelaySec)
-                    markExhausted(apiKey, m, now, e.retryDelaySec)
+                    if (e.retryDelaySec != null && quotaWindow(e) == QuotaWindow.MINUTE) retryDelay = maxOf(retryDelay ?: 0, e.retryDelaySec)
+                    markExhausted(apiKey, m, now, e.retryDelaySec, "g", quotaSkipUntil(e, now))
                     return null
                 }
                 // The error often names the replacement model ("use models/gemini-x-flash").
@@ -280,11 +413,12 @@ suspend fun groundedGenerate(apiKey: String, model: String, prompt: String, now:
             val avail = listGeminiModels(apiKey)
             if (avail == null) { offline = true; break }
             available = avail
-            pickModels(avail).forEach { if (it !in models) models += it }
+            groundedModelOrder(avail).forEach { if (it !in models) models += it }
             if (i >= models.size) break
         }
         val m = models[i++]
         if (exhaustedAt(apiKey, m, now) != null) { skippedForQuota += m; continue }
+        if (calls >= MAX_GROUNDED_CALLS) break
         attempt(m, legacy = false)?.let { return it }
         if (offline) break
         val e = lastError
@@ -338,21 +472,45 @@ suspend fun liveLookup(
     val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
     val place = describePlace(rev, placeHint)
     val prompt = buildLivePrompt(place, lat, lng, group)
-    return when (val g = groundedGenerate(apiKey, model, prompt, now)) {
+    return when (val g = groundedGenerate(apiKey, model, prompt, now, priceSearchQueries(rev, placeHint, group))) {
         is Grounded.Ok -> {
-            val (out, skipped) = placeComparables(g.text, g.sources, lat, lng, group, rev, key, now)
-            LiveLookupResult(RateLookup(key, lat, lng, group, place, now, out.size, skipped, g.model, null, g.sources.take(12)), out)
+            val (out, skipped) = placeComparables(g.text, g.sources, lat, lng, group, rev, key, now, if (g.viaSearch) g.hits else null)
+            LiveLookupResult(RateLookup(key, lat, lng, group, place, now, out.size, skipped, g.model, null, g.sources.take(12), viaSearch = g.viaSearch,
+                // Nothing usable from the AI: keep the search results so they can still be read.
+                snippets = if (g.viaSearch && out.isEmpty()) g.hits.take(8) else emptyList()), out)
         }
         is Grounded.Failed -> LiveLookupResult(
-            RateLookup(key, lat, lng, group, place, now, model = g.model, error = g.error, retryAt = g.retryAt),
+            RateLookup(key, lat, lng, group, place, now, model = g.model, error = g.error, retryAt = g.retryAt, snippets = g.snippets.take(8)),
             emptyList(), g.error,
         )
     }
 }
 
+private fun groupQueryWords(group: Int): String = when (group) {
+    1 -> "agricultural land for sale price per acre"
+    2 -> "independent house for sale price"
+    3 -> "flat apartment for sale price per sq ft"
+    else -> "plot for sale price per cent"
+}
+
+/** 2.3.0: free web search queries for the price check fallback (village / locality, taluk, district). */
+fun priceSearchQueries(rev: GeoPlace?, hint: String, group: Int): List<String> {
+    val local = listOfNotNull(rev?.locality?.takeIf { it.isNotBlank() }, hint.split(',').firstOrNull()?.trim()?.takeIf { it.isNotBlank() }).firstOrNull().orEmpty()
+    val taluk = rev?.taluk.orEmpty()
+    val district = rev?.district.orEmpty().ifBlank { hint.split(',').map { it.trim() }.lastOrNull().orEmpty() }
+    if (local.isBlank() && district.isBlank()) return emptyList()
+    return listOf(
+        listOf(local, district, groupQueryWords(group)).filter { it.isNotBlank() }.joinToString(" "),
+        listOf(local, taluk.ifBlank { district }, if (group == 1) "land rate per acre" else "land rate per cent 2026").filter { it.isNotBlank() }.joinToString(" "),
+        if (group == 2 || group == 3) "" else listOf(local, district, "guideline value").filter { it.isNotBlank() }.joinToString(" "),
+    ).filter { it.isNotBlank() }.distinct()
+}
+
 /** Turns the model's JSON into comparables placed on the map within 10 km. Returns (kept, dropped count). */
 private suspend fun placeComparables(
     text: String, sources: List<String>, lat: Double, lng: Double, group: Int, rev: GeoPlace?, key: String, now: Long,
+    /** 2.3.0: the web search results when the answer came from them – every comparable must cite one of them. */
+    searchHits: List<WebSnippet>? = null,
 ): Pair<List<OnlineRate>, Int> {
     val out = mutableListOf<OnlineRate>()
     var skipped = 0
@@ -376,7 +534,10 @@ private suspend fun placeComparables(
         if (pLat == null || pLng == null) { skipped++; continue }
         val dist = haversineKm(lat, lng, pLat, pLng)
         if (dist > PriceRules.MAX_KM) { skipped++; continue }
-        val url = o.s("source_url").takeIf { it.startsWith("http") } ?: sources.firstOrNull().orEmpty()
+        val cited = o.s("source_url").takeIf { it.startsWith("http") }
+        // Never an unsourced number: with our own search, the cited page must be one of the results we fetched.
+        if (searchHits != null && (cited == null || !citesResult(cited, searchHits))) { skipped++; continue }
+        val url = cited ?: sources.firstOrNull().orEmpty()
         out += OnlineRate(
             id = newId(), place = name, district = district, lat = pLat, lng = pLng, group = group,
             kind = if (o.s("kind").contains("guide", true)) RateKind.GUIDELINE else RateKind.ASKING,
@@ -390,6 +551,8 @@ private suspend fun placeComparables(
 
 /** The model that last worked in this app session (models retire, so never hard-code one). */
 private var cachedBestModel: String? = null
+/** 2.3.0: the model that last answered a plain (web-search) call. */
+private var cachedPlainModel: String? = null
 
 /** Model ids this key can call with generateContent, or null on a network failure. */
 private suspend fun listGeminiModels(apiKey: String): List<String>? {
