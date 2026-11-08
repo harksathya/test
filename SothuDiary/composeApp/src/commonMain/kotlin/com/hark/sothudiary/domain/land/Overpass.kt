@@ -219,9 +219,12 @@ out tags;
  * it only holds Switzerland.
  */
 val OVERPASS_ENDPOINTS = listOf(
+    // 2.4.0: the main server first again – it is the fastest when the request carries an identifying User-Agent (a
+    // 2.3 request got HTTP 406 there). From a test machine on 2026-11-08 the VK mirror answered in 16–40 s and
+    // private.coffee did not answer within 40 s, so they are the hedges, not the first choice.
+    "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass-api.de/api/interpreter",
 )
 
 /** Outcome of an Overpass fetch: the elements, or a tagged error ("network" / "[other] …"). */
@@ -337,7 +340,9 @@ out tags;
 }
 
 /** Merged result of the layer queries: unique elements, the layers that loaded and those that failed (with the error). */
-data class LayeredOsm(val elements: List<OsmElement>, val okLayers: List<String>, val failed: Map<String, String>) {
+data class LayeredOsm(val elements: List<OsmElement>, val okLayers: List<String>, val failed: Map<String, String>,
+                      /** 2.4.0: every server call made, for the Status / நிலை panel. */
+                      val attempts: List<SourceStatusLine> = emptyList()) {
     val anyOk: Boolean get() = okLayers.isNotEmpty()
     /** One error for the whole fetch when nothing loaded (shown like before). */
     val error: String? get() = if (anyOk) null else (failed.values.firstOrNull { it != "network" } ?: failed.values.firstOrNull() ?: "network")
@@ -381,15 +386,13 @@ internal fun readOverpassAnswer(code: Int, body: String?): Pair<OverpassResult, 
         return OverpassResult(parseOverpass(body)) to false
     }
     val busy = code == 429 || code == 504 || code == 503 || code == 502 || (code in 200..299)
-    return OverpassResult(emptyList(), "[other] Overpass HTTP $code" + (if (busy) " (server busy)" else "")) to busy
+    val why = when (code) { 406 -> " (refused: User-Agent policy)"; else -> if (busy) " (server busy)" else "" }
+    return OverpassResult(emptyList(), "[other] Overpass HTTP $code$why") to busy
 }
 
 private suspend fun overpassOnce(url: String, query: String, timeoutMs: Int): Pair<OverpassResult, Boolean> {
-    val r = httpRequest(
-        url, method = "POST",
-        headers = mapOf("Content-Type" to "application/x-www-form-urlencoded", "User-Agent" to APP_USER_AGENT, "Accept" to "application/json"),
-        body = "data=" + urlEncode(query), timeoutMs = timeoutMs,
-    ) ?: return OverpassResult(emptyList(), "network") to true
+    val r = overpassCall(url, query, timeoutMs)
+    if (r.code < 0) return OverpassResult(emptyList(), "network") to true
     return readOverpassAnswer(r.code, r.body)
 }
 
@@ -404,77 +407,184 @@ suspend fun fetchOverpass(query: String): OverpassResult {
     return OverpassResult(emptyList(), lastError)
 }
 
-/** At most two requests at a time per server (we are one app among many on free servers). */
-private val serverGates = OVERPASS_ENDPOINTS.associateWith { kotlinx.coroutines.sync.Semaphore(2) }
+/**
+ * 2.4.0: the layers are sent as two combined queries instead of seven. Seven parallel queries from one phone tripped the
+ * per-IP limits of the free servers (overpass-api.de gives each IP two slots and answers 429 beyond that), so most layers
+ * of a check failed. CORE answers the main question (water, roads, land use at the pin); EXTRA adds amenities,
+ * utilities, railway and protected areas. A failed group only marks its own layers unknown.
+ */
+object OsmGroup {
+    const val CORE = "core"
+    const val EXTRA = "extra"
+    val layers: Map<String, List<String>> = linkedMapOf(
+        CORE to listOf(OsmLayer.WATER, OsmLayer.ROADS, OsmLayer.LANDUSE),
+        EXTRA to listOf(OsmLayer.AMENITIES, OsmLayer.UTILITIES, OsmLayer.RAIL, OsmLayer.PROTECTED),
+    )
+}
+
+/** Joins layer queries (each "[out:json][timeout:N];" + statements) into one query per [OsmGroup]. */
+fun groupQueries(layerQueries: Map<String, String>): Map<String, String> = OsmGroup.layers.mapValues { (_, layers) ->
+    val parts = layers.mapNotNull { layerQueries[it] }
+    if (parts.isEmpty()) "" else {
+        val head = parts.first().lineSequence().first()
+        head + "\n" + parts.joinToString("\n") { q -> q.lineSequence().drop(1).joinToString("\n") }
+    }
+}.filterValues { it.isNotBlank() }
+
+/** Host name of a server URL ("overpass-api.de"). */
+fun hostOf(url: String): String = url.substringAfter("://").substringBefore('/')
+
+/** Plain-words reason for an Overpass HTTP answer (Status / நிலை panel). */
+fun overpassReason(code: Int, error: String?): String = when {
+    code < 0 -> error ?: "no answer"
+    code == 406 -> "HTTP 406 – server refused this app (User-Agent policy)"
+    code == 429 -> "HTTP 429 – too many requests from this network, wait a minute"
+    code == 504 || code == 503 || code == 502 -> "HTTP $code – server busy"
+    code == 400 -> "HTTP 400 – query rejected"
+    code in 200..299 -> "busy (query timed out on the server)"
+    else -> "HTTP $code"
+}
+
+/** Servers that refused us (406: one hour) or asked us to slow down (429: one minute), per app session. */
+private val serverPause = mutableMapOf<String, Long>()
+/** One request at a time per server from this app (the free servers count slots per IP). */
+private val serverGates = OVERPASS_ENDPOINTS.associateWith { kotlinx.coroutines.sync.Semaphore(1) }
+
+private fun nowMs(): Long = com.hark.sothudiary.data.nowMillis()
+
+/** One Overpass HTTP call with its status line. */
+private suspend fun overpassAttempt(url: String, query: String, timeoutMs: Int, label: String): Pair<OverpassResult, SourceStatusLine> {
+    val gate = serverGates[url]
+    val r = if (gate != null) gate.withPermit { overpassCall(url, query, timeoutMs) } else overpassCall(url, query, timeoutMs)
+    val host = hostOf(url)
+    if (r.code == 406) serverPause[url] = nowMs() + 60 * 60_000L
+    if (r.code == 429) serverPause[url] = nowMs() + 60_000L
+    val (res, _) = if (r.code < 0) OverpassResult(emptyList(), "network") to true else readOverpassAnswer(r.code, r.body)
+    val ok = res.error == null
+    val line = SourceStatusLine(
+        source = "Overpass $label · $host", ok = ok,
+        reason = if (ok) "${res.elements.size} map features" else overpassReason(r.code, r.error),
+        ms = r.ms, detail = "POST $url · HTTP ${r.code}" + (r.error?.let { " · $it" } ?: "") +
+            (if (!ok && r.body != null) " · " + r.body.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim().take(160) else ""),
+    )
+    return res to line
+}
+
+/** A status line before it is turned into the saved [com.hark.sothudiary.data.SourceStatus]. */
+data class SourceStatusLine(val source: String, val ok: Boolean?, val reason: String, val ms: Long = 0, val detail: String = "") {
+    fun toStatus() = com.hark.sothudiary.data.SourceStatus(source, ok, reason, ms, detail)
+}
+
+private suspend fun overpassCall(url: String, query: String, timeoutMs: Int): com.hark.sothudiary.HttpResult =
+    com.hark.sothudiary.httpCall(
+        url, method = "POST",
+        // "Accept: */*": overpass-api.de's filter also refuses some clients that only accept application/json.
+        headers = mapOf("Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent" to APP_USER_AGENT, "Accept" to "*/*"),
+        body = "data=" + urlEncode(query), timeoutMs = timeoutMs,
+    )
 
 /**
- * One layer, raced across the servers: it starts on one server and, when that has not answered within [hedgeMs]
- * (or answered busy), also asks the next one – the first good answer wins and the rest are cancelled. Busy answers
- * back off a little before the next server. Gives up after [budgetMs].
+ * One group query raced across the servers: it starts on one server and, when that has not answered within [hedgeMs]
+ * (or failed), also asks the next one – the first good answer wins and the others are cancelled (their sockets closed).
+ * A server that refused us (406) or rate-limited us (429) is skipped for a while. When every server failed quickly and
+ * time is left, the first one is asked once more after a short back-off. Each try gets at most [perTryMs].
  */
-suspend fun fetchLayer(query: String, index: Int, budgetMs: Long = 40_000, hedgeMs: Long = 7_000): OverpassResult {
-    val order = endpointOrder(index)
+suspend fun fetchGroup(
+    query: String, index: Int, label: String, budgetMs: Long = LandRules.OSM_BUDGET_MS, hedgeMs: Long = 9_000, perTryMs: Int = 25_000,
+    endpoints: List<String> = OVERPASS_ENDPOINTS,
+    attempt: suspend (String, String, Int, String) -> Pair<OverpassResult, SourceStatusLine> = ::overpassAttempt,
+): Pair<OverpassResult, List<SourceStatusLine>> {
+    val now = nowMs()
+    val all = endpointOrder(index, endpoints)
+    val order = all.filter { (serverPause[it] ?: 0L) <= now }.ifEmpty { all }
+    val lines = mutableListOf<SourceStatusLine>()
     var lastError = "network"
+    val started = nowMs()
     val result = kotlinx.coroutines.withTimeoutOrNull(budgetMs) {
         kotlinx.coroutines.coroutineScope {
             val winner = kotlinx.coroutines.CompletableDeferred<OverpassResult>()
-            val failures = kotlinx.coroutines.channels.Channel<Boolean>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+            val done = kotlinx.coroutines.channels.Channel<Pair<OverpassResult, SourceStatusLine>>(kotlinx.coroutines.channels.Channel.UNLIMITED)
             val jobs = mutableListOf<kotlinx.coroutines.Job>()
-            fun launchOn(i: Int) {
-                val url = order[i]
+            fun launchOn(url: String) {
                 jobs += launch {
-                    val gate = serverGates[url]
-                    val (res, busy) = if (gate != null) gate.withPermit { overpassOnce(url, query, (budgetMs - 2_000).toInt().coerceIn(10_000, 30_000)) }
-                    else overpassOnce(url, query, 30_000)
-                    if (res.error == null) { winner.complete(res); failures.trySend(false) }
-                    else { lastError = res.error; failures.trySend(busy) }
+                    val left = (budgetMs - (nowMs() - started)).toInt()
+                    val ans = attempt(url, query, minOf(perTryMs, maxOf(5_000, left - 500)), label)
+                    if (ans.first.error == null) winner.complete(ans.first)
+                    done.trySend(ans)
                 }
             }
-            launchOn(0)
-            var started = 1
-            var done = 0
+            launchOn(order[0])
+            var next = 1
+            var finished = 0
+            var retried = false
             while (!winner.isCompleted) {
-                // Wait for a failure, or the hedge time, then add the next server.
-                val failed = kotlinx.coroutines.withTimeoutOrNull(hedgeMs) { failures.receive() }
+                val r = kotlinx.coroutines.withTimeoutOrNull(hedgeMs) { done.receive() }
+                if (r != null) {
+                    finished++
+                    lines += r.second
+                    r.first.error?.let { lastError = it }
+                }
                 if (winner.isCompleted) break
-                if (failed != null) done++
-                if (started < order.size) {
-                    if (failed == true) kotlinx.coroutines.delay(overpassBackoffMs(started, true))
-                    launchOn(started++)
-                } else if (done >= started) {
-                    // Every server failed once: one more round on the first server after a back-off.
-                    if (started < order.size + 1) {
-                        kotlinx.coroutines.delay(overpassBackoffMs(started + 1, true))
-                        launchOn(0); started++
-                    } else break
+                if (next < order.size) launchOn(order[next++])
+                else if (finished >= next) {
+                    if (retried) break
+                    retried = true
+                    // Every server failed: one more try on the first after a short back-off, if time allows.
+                    if (budgetMs - (nowMs() - started) < 8_000) break
+                    kotlinx.coroutines.delay(2_000)
+                    launchOn(order[0]); next++
                 }
             }
+            // Lines of tries that ended together with the winner.
+            while (true) { val r = done.tryReceive().getOrNull() ?: break; lines += r.second }
             val r = if (winner.isCompleted) winner.await() else null
             jobs.forEach { it.cancel() }
             r
         }
     }
-    return result ?: OverpassResult(emptyList(), lastError.takeIf { it != "network" } ?: "[other] Overpass: no answer in ${budgetMs / 1000} s (server busy)")
+    if (result == null && lines.none { it.ok == false && it.reason.isNotBlank() })
+        lines += SourceStatusLine("Overpass $label", false, "no answer within ${budgetMs / 1000} s")
+    return (result ?: OverpassResult(emptyList(), lastError.takeIf { it != "network" } ?: "[other] Overpass: no answer in ${budgetMs / 1000} s (server busy)")) to lines.toList()
 }
 
-/** All layers in parallel within one overall time budget; partial results are kept. */
-suspend fun fetchOsmLayers(queries: Map<String, String>, budgetMs: Long = 40_000): LayeredOsm {
-    val results = kotlinx.coroutines.coroutineScope {
-        queries.entries.mapIndexed { i, (layer, q) -> layer to async { fetchLayer(q, i, budgetMs) } }
-            .associate { (layer, d) -> layer to d.await() }
+/** Kept for older callers: one query raced across the servers. */
+suspend fun fetchLayer(query: String, index: Int, budgetMs: Long = 40_000, hedgeMs: Long = 7_000): OverpassResult =
+    fetchGroup(query, index, "", budgetMs, hedgeMs).first
+
+/**
+ * All layers within one time budget, as the two [OsmGroup] queries in parallel (each starting on a different server);
+ * partial results are kept: a failed group marks only its own layers as failed.
+ */
+suspend fun fetchOsmLayers(queries: Map<String, String>, budgetMs: Long = LandRules.OSM_BUDGET_MS): LayeredOsm {
+    val groups = groupQueries(queries)
+    val answers = kotlinx.coroutines.coroutineScope {
+        groups.entries.mapIndexed { i, (g, q) -> g to async { fetchGroup(q, i, if (g == OsmGroup.CORE) "(water, roads, land use)" else "(amenities, rail, forest)", budgetMs) } }
+            .associate { (g, d) -> g to d.await() }
     }
-    return mergeLayers(results)
+    val perLayer = LinkedHashMap<String, OverpassResult>()
+    for ((g, ans) in answers) {
+        val layers = OsmGroup.layers[g].orEmpty()
+        layers.forEachIndexed { i, layer ->
+            // The group's elements are given once (to its first layer); its other layers count as loaded too.
+            perLayer[layer] = if (ans.first.error != null) ans.first else if (i == 0) ans.first else OverpassResult(emptyList())
+        }
+    }
+    return mergeLayers(perLayer).copy(attempts = answers.values.flatMap { it.second })
 }
 
 /** Open-Meteo elevation (Copernicus 90 m DEM, free, no key) for up to 100 points; null on any error. */
 suspend fun fetchElevations(points: List<Pair<Double, Double>>): List<Double>? {
     if (points.isEmpty()) return emptyList()
-    val url = "https://api.open-meteo.com/v1/elevation?latitude=" + points.joinToString(",") { r6(it.first).toString() } +
-        "&longitude=" + points.joinToString(",") { r6(it.second).toString() }
+    val url = elevationUrl(points)
     val r = httpRequest(url, headers = mapOf("User-Agent" to APP_USER_AGENT, "Accept" to "application/json"), timeoutMs = 20_000) ?: return null
     if (!r.ok) return null
     return parseElevations(r.body)?.takeIf { it.size == points.size }
 }
+
+/** Open-Meteo elevation request for the points (lat / lng lists). */
+fun elevationUrl(points: List<Pair<Double, Double>>): String =
+    "https://api.open-meteo.com/v1/elevation?latitude=" + points.joinToString(",") { r6(it.first).toString() } +
+        "&longitude=" + points.joinToString(",") { r6(it.second).toString() }
 
 /** {"elevation":[123.0, …]} -> the list. */
 fun parseElevations(text: String?): List<Double>? =

@@ -67,7 +67,12 @@ object Geocoder {
     suspend fun reverse(lat: Double, lng: Double): GeoPlace? {
         val url = "$BASE/reverse?format=json&addressdetails=1&zoom=16&accept-language=en&lat=$lat&lon=$lng"
         val body = get(url) ?: return null
-        val obj = runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull() ?: return null
+        return parseReverse(body)
+    }
+
+    /** 2.4.0: a Nominatim reverse answer -> the place (unit-tested with a real answer). */
+    fun parseReverse(body: String?): GeoPlace? {
+        val obj = runCatching { json.parseToJsonElement(body ?: return null) as? JsonObject }.getOrNull() ?: return null
         return toPlace(obj)
     }
 

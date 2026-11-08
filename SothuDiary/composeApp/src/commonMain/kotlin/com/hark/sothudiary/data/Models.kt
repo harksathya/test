@@ -73,6 +73,49 @@ data class Property(
     val importedAt: Long = 0,
     /** 2.3.1: registration details – TNREGINET place (district / SRO / village / street) and the official guideline value. */
     val registry: RegistryInfo = RegistryInfo(),
+    /**
+     * 2.4.0: the one shared "Land details / நில விவரம்" record (district, taluk, village, SRO, survey / subdivision,
+     * patta). Entered once and used by the Land check, the guideline value (TNREGINET), the price check, the EC / TNGIS /
+     * patta links and Share. The older fields ([district], [taluk], [surveyNumber], [registry] district / SRO / village)
+     * are kept in step with it by the repository ([com.hark.sothudiary.data.reconcileLand]) so nothing is lost.
+     */
+    val land: LandRecord = LandRecord(),
+)
+
+/** 2.4.0: Land details / நில விவரம் – what the revenue and registration records call this land. */
+@Serializable
+data class LandRecord(
+    val district: String = "",
+    val taluk: String = "",
+    val village: String = "",
+    /** Sub-Registrar Office (சார்பதிவாளர் அலுவலகம்). */
+    val sro: String = "",
+    /** Survey number (புல எண்), e.g. "123". */
+    val surveyNo: String = "",
+    /** Subdivision (உட்பிரிவு), e.g. "4B". */
+    val subdivision: String = "",
+    /** Patta number (பட்டா எண்). */
+    val pattaNo: String = "",
+    /** Which of district / taluk / village were filled from the map pin (still editable). */
+    val autoFilled: Set<String> = emptySet(),
+) {
+    /** "123/4B" – survey number with its subdivision. */
+    val surveyFull: String get() = listOf(surveyNo.trim(), subdivision.trim()).filter { it.isNotBlank() }.joinToString("/")
+    val isEmpty: Boolean get() = listOf(district, taluk, village, sro, surveyNo, subdivision, pattaNo).all { it.isBlank() }
+}
+
+/**
+ * 2.4.0: one source a check used and how it went – the "Status / நிலை" panel. [ok] null = skipped (not needed / no key).
+ */
+@Serializable
+data class SourceStatus(
+    val source: String,
+    val ok: Boolean? = null,
+    /** Short reason, e.g. "HTTP 406 (blocked user agent)", "timeout after 25 s", "12 features". */
+    val reason: String = "",
+    val ms: Long = 0,
+    /** Longer detail for the Details expander (server, request, error text). */
+    val detail: String = "",
 )
 
 /** 2.3.1: unit a guideline value is quoted in (TNREGINET uses ₹ per sq ft / sq m for streets, per hectare for survey numbers). */
@@ -227,6 +270,8 @@ data class RateLookup(
     val viaSearch: Boolean = false,
     /** 2.3.0: web search results kept when Gemini could not read them (shown as they are, with their pages). */
     val snippets: List<WebSnippet> = emptyList(),
+    /** 2.4.0: each source the lookup used and how it went (Status / நிலை). */
+    val status: List<SourceStatus> = emptyList(),
 )
 
 /** A user-made collection, e.g. "Shortlist" or "Jaihindpuram plots". */
@@ -322,6 +367,18 @@ data class AppSettings(
     /** 2.3.1: Tamil Nadu sale deed rates (editable; see domain/registry/StampDuty.kt for the source). */
     val stampDutyPct: Double = 7.0,
     val registrationFeePct: Double = 2.0,
+    /** 2.4.0: weights of the property score factors (0 = ignore a factor). */
+    val scoreWeights: ScoreWeights = ScoreWeights(),
+)
+
+/** 2.4.0: relative weights of the 0–100 property score (Settings). Missing factors are skipped, not counted as zero. */
+@Serializable
+data class ScoreWeights(
+    val price: Int = 30,
+    val water: Int = 25,
+    val road: Int = 15,
+    val amenities: Int = 15,
+    val guideline: Int = 15,
 )
 
 @Serializable
@@ -439,4 +496,6 @@ data class LandCheck(
     val aiViaSearch: Boolean = false,
     /** Web search results kept when Gemini could not read them. */
     val webSnippets: List<WebSnippet> = emptyList(),
+    /** 2.4.0: each source the check used and how it went (Status / நிலை). */
+    val status: List<SourceStatus> = emptyList(),
 )

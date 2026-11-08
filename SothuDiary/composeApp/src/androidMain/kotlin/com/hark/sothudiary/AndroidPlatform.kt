@@ -142,6 +142,19 @@ class AndroidPlatform(
         }
     }
 
+    override fun bundledText(name: String): String? = runCatching {
+        val id = context.resources.getIdentifier(name, "raw", context.packageName)
+        if (id == 0) null else context.resources.openRawResource(id).use { it.readBytes().decodeToString() }
+    }.getOrNull()
+
+    override fun shareFiles(subject: String, text: String, files: List<Pair<String, String>>) {
+        if (!AndroidShare.share(context, subject, text, files)) shareText(subject, text)
+    }
+
+    override fun renderShareCard(card: ShareCard): String? = AndroidShare.renderCard(context, card)
+
+    override fun writeShareFile(fileName: String, text: String): String? = AndroidShare.writeFile(context, fileName, text)
+
     override fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }

@@ -98,6 +98,7 @@ import com.hark.sothudiary.ui.FullScreenOverlay
 import com.hark.sothudiary.ui.Route
 import com.hark.sothudiary.ui.components.AI_STUDIO_URL
 import com.hark.sothudiary.ui.components.AppTopBar
+import com.hark.sothudiary.domain.land.hasAnyData
 import com.hark.sothudiary.ui.components.EmptyState
 import com.hark.sothudiary.ui.components.GeminiKeyDialog
 import com.hark.sothudiary.ui.components.LookupErrorNote
@@ -222,7 +223,7 @@ fun areaText(cents: Double, lang: Lang): String =
 
 /** The current, matching land check of a property (any age), for the detail screen and Worth it. */
 fun currentLandAssessment(ctx: AppContext, p: Property): Pair<LandCheck, LandAssessment>? {
-    val c = landCheckFor(ctx.repo.data, p.id)?.takeIf { it.key == landCheckKey(p) && it.osmOk } ?: return null
+    val c = landCheckFor(ctx.repo.data, p.id)?.takeIf { it.key == landCheckKey(p) && it.hasAnyData() } ?: return null
     return c to assessLand(c, p, ctx.repo.data.settings.geminiApiKey.isNotBlank())
 }
 
@@ -425,26 +426,19 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
         }
         return
     }
-    val scope = rememberCoroutineScope()
-    var running by remember(p.id) { mutableStateOf(false) }
+    // 2.4.0: the check runs in the app scope (CheckRunner) – leaving this screen no longer cancels it.
+    val running = com.hark.sothudiary.domain.CheckRunner.isRunning("land", p.id)
     var drawing by remember { mutableStateOf(false) }
     var askKey by remember { mutableStateOf(false) }
     val hasKey = data.settings.geminiApiKey.isNotBlank()
     val saved = landCheckFor(data, p.id)
     val current = saved?.takeIf { it.key == landCheckKey(p) }
-    val assessment = current?.takeIf { it.osmOk || it.ai != null }?.let { assessLand(it, p, hasKey) }
+    val assessment = current?.takeIf { it.hasAnyData() }?.let { assessLand(it, p, hasKey) }
     val typeText = p.type.tr().of(Lang.EN)
 
     fun run() {
         if (running || p.lat == null || p.lng == null) return
-        running = true
-        scope.launch {
-            val r = runCatching {
-                runLandCheck(p, data.settings.geminiApiKey, data.settings.geminiModel, typeText, landCheckFor(ctx.repo.data, p.id))
-            }.getOrNull()
-            if (r != null) ctx.repo.saveLandCheck(r)
-            running = false
-        }
+        com.hark.sothudiary.domain.CheckRunner.land(ctx.repo, p, typeText)
     }
     // Like the price check: run when there is no recent check for this pin / outline / size.
     LaunchedEffect(p.id, landCheckKey(p)) { if (freshLandCheck(ctx.repo.data, p) == null) run() }
@@ -475,6 +469,7 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
             // ---- Map + plot summary ----
             SectionCard {
                 if (platformHasMap || plot.isNotEmpty()) LandMap(p, current, plot, assessment?.banner?.level)
+                Text(com.hark.sothudiary.i18n.S4.osmCredit.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     val areaSqm = if (stated > 0) stated else if (plot.size >= 3) polygonAreaSqm(plot.map { it.lat to it.lng }) else 0.0
@@ -515,7 +510,7 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
                     if (current.osmKeptLayers.isNotEmpty())
                         Text(S.landKept.f(current.osmKeptLayers.joinToString(", ") { layerName(it).of(langLayers) }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            } else if (osmErr != null) {
+            } else if (osmErr != null && current?.osmOk != true) {
                 LookupErrorNote(osmErr, 0L, otherText = S.landOsmBusy)
             }
 
@@ -524,8 +519,8 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
                 TileGrid(assessment.allTiles, ctx.wide)
                 Text(S.landCheckedOn.f(formatDateShort(current.fetchedAt, lang)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                // ---- AI part ----
-                SectionCard(title = S.zoningTitle.s(), trailing = { Pill(S.aiEstimateTag.s(), Color(0xFF6F5E9A)) }) {
+                // ---- AI part (2.4.0: only shown when an earlier AI result exists or automatic AI search is on) ----
+                if (current.ai != null || com.hark.sothudiary.domain.land.LandRules.AUTO_AI_SEARCH) SectionCard(title = S.zoningTitle.s(), trailing = { Pill(S.aiEstimateTag.s(), Color(0xFF6F5E9A)) }) {
                     val ai = current.ai
                     val err = current.aiError
                     if (!hasKey && ai == null) {
@@ -603,8 +598,11 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
                 Text(S.landNotRun.s(), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            // ---- 2.3.0: survey number (honest fallback: the official TNGIS map + saving what the user finds) ----
-            SurveyCard(ctx, p)
+            // ---- 2.4.0: the shared land details (survey number, patta … – one record for the whole app) ----
+            LandDetailsSection(ctx, p)
+
+            // ---- 2.4.0: Status / நிலை – every source, ✓ / ✗ with the reason ----
+            StatusPanel(current?.status.orEmpty(), runningSince = com.hark.sothudiary.domain.CheckRunner.running["land:" + p.id])
 
             Button(onClick = { run() }, enabled = !running, modifier = Modifier.fillMaxWidth()) {
                 if (running) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))

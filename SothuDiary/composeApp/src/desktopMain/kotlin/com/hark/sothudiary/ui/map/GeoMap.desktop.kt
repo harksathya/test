@@ -33,6 +33,8 @@ actual fun GeoMap(
     shapes: List<MapShape>,
     onPinDragging: ((String, Double, Double) -> Unit)?,
     sketch: MapSketch?,
+    onViewport: ((MapViewport) -> Unit)?,
+    flyTo: Triple<Double, Double, Double>?,
 ) {
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
         @Suppress("NAME_SHADOWING")

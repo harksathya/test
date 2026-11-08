@@ -192,16 +192,53 @@ data class GvPlace(val district: String, val sro: String, val village: String, v
 
 private fun cleanDistrict(s: String) = s.replace(Regex("""(?i)\s*district$"""), "").replace(Regex("""\s*மாவட்டம்$"""), "").trim()
 
-/** Saved registry fields first; blanks are filled from the map address (district, locality as the village). */
+/**
+ * 2.4.0: the shared land record ([Property.land]) first, then the older registry fields, then the map address
+ * (district, locality as the village).
+ */
 fun gvPlace(p: Property): GvPlace {
     val r = p.registry
+    val l = p.land
     return GvPlace(
-        district = r.district.ifBlank { cleanDistrict(p.district) },
-        sro = r.sro,
-        village = r.village.ifBlank { p.locality },
+        district = l.district.ifBlank { r.district.ifBlank { cleanDistrict(p.district) } },
+        sro = l.sro.ifBlank { r.sro },
+        village = l.village.ifBlank { r.village.ifBlank { p.locality } },
         street = r.street,
-        survey = p.surveyNumber,
+        survey = l.surveyFull.ifBlank { p.surveyNumber },
     )
+}
+
+/**
+ * 2.4.0: Tamil Nadu's 38 districts in English and Tamil. The TNREGINET home page opens in Tamil even with
+ * UserLocaleID=en (2026 snapshot: "மதுரை" in the district list), so an English district name never matched the list
+ * and the form stayed empty. The prefill now tries every spelling here.
+ */
+val TN_DISTRICTS: Map<String, List<String>> = mapOf(
+    "Ariyalur" to listOf("அரியலூர்"), "Chengalpattu" to listOf("செங்கல்பட்டு", "Chengalpet"), "Chennai" to listOf("சென்னை"),
+    "Coimbatore" to listOf("கோயம்புத்தூர்", "கோவை"), "Cuddalore" to listOf("கடலூர்"), "Dharmapuri" to listOf("தர்மபுரி", "தருமபுரி"),
+    "Dindigul" to listOf("திண்டுக்கல்"), "Erode" to listOf("ஈரோடு"), "Kallakurichi" to listOf("கள்ளக்குறிச்சி"),
+    "Kancheepuram" to listOf("காஞ்சிபுரம்", "Kanchipuram"), "Kanniyakumari" to listOf("கன்னியாகுமரி", "Kanyakumari"),
+    "Karur" to listOf("கரூர்"), "Krishnagiri" to listOf("கிருஷ்ணகிரி"), "Madurai" to listOf("மதுரை"),
+    "Mayiladuthurai" to listOf("மயிலாடுதுறை"), "Nagapattinam" to listOf("நாகப்பட்டினம்"), "Namakkal" to listOf("நாமக்கல்"),
+    "Nilgiris" to listOf("நீலகிரி", "The Nilgiris"), "Perambalur" to listOf("பெரம்பலூர்"), "Pudukkottai" to listOf("புதுக்கோட்டை"),
+    "Ramanathapuram" to listOf("இராமநாதபுரம்", "ராமநாதபுரம்"), "Ranipet" to listOf("இராணிப்பேட்டை", "ராணிப்பேட்டை"),
+    "Salem" to listOf("சேலம்"), "Sivaganga" to listOf("சிவகங்கை", "Sivagangai"), "Tenkasi" to listOf("தென்காசி"),
+    "Thanjavur" to listOf("தஞ்சாவூர்", "Tanjore"), "Theni" to listOf("தேனி"), "Thoothukudi" to listOf("தூத்துக்குடி", "Tuticorin", "Thoothukkudi"),
+    "Tiruchirappalli" to listOf("திருச்சிராப்பள்ளி", "Trichy", "Tiruchirapalli"), "Tirunelveli" to listOf("திருநெல்வேலி", "Thirunelveli"),
+    "Tirupathur" to listOf("திருப்பத்தூர்", "Tirupattur"), "Tiruppur" to listOf("திருப்பூர்", "Tirupur"),
+    "Tiruvallur" to listOf("திருவள்ளூர்", "Thiruvallur"), "Tiruvannamalai" to listOf("திருவண்ணாமலை"),
+    "Tiruvarur" to listOf("திருவாரூர்", "Thiruvarur"), "Vellore" to listOf("வேலூர்"), "Viluppuram" to listOf("விழுப்புரம்", "Villupuram"),
+    "Virudhunagar" to listOf("விருதுநகர்"),
+)
+
+/** Every spelling of a district (English, Tamil, older names) to try on the portal's list. */
+fun districtSpellings(d: String): List<String> {
+    val t = d.trim()
+    if (t.isBlank()) return emptyList()
+    val key = TN_DISTRICTS.entries.firstOrNull { (en, others) ->
+        en.equals(t, true) || others.any { it.equals(t, true) } || en.replace(" ", "").equals(t.replace(" ", ""), true)
+    }
+    return if (key == null) listOf(t) else (listOf(t, key.key) + key.value).distinct()
 }
 
 private fun jsStr(s: String): String = buildString {
@@ -228,27 +265,45 @@ fun gvPrefillScript(place: GvPlace): String = """
  function norm(s){return (s||'').toLowerCase().replace(/[^a-z0-9\u0B80-\u0BFF]/g,'');}
  function el(ids){for(var i=0;i<ids.length;i++){var e=document.getElementById(ids[i])||document.querySelector(ids[i].charAt(0)=='['?ids[i]:'#__none');if(e)return e;}return null;}
  function chosen(s){return s&&s.selectedIndex>0&&s.value!='-1'&&s.value!='0'&&s.value!='';}
- function pick(s,want){ if(!s||!want) return false; var w=norm(want), best=null;
-   for(var i=0;i<s.options.length;i++){var o=s.options[i], t=norm(o.text); if(!t||o.value=='-1'||o.value=='0'||o.value=='') continue;
-     if(t==w){best=o;break;} if(!best&&Math.min(t.length,w.length)>=4&&(t.indexOf(w)>=0||w.indexOf(t)>=0)) best=o;}
+ function real(s){var n=0; if(!s) return 0; for(var i=0;i<s.options.length;i++){var o=s.options[i]; if(o.value!='-1'&&o.value!='0'&&o.value!='') n++;} return n;}
+ function pick(s,wants){ if(!s||!wants||!wants.length) return false; var best=null;
+   for(var k=0;k<wants.length&&!best;k++){ var w=norm(wants[k]); if(!w) continue;
+    for(var i=0;i<s.options.length;i++){var o=s.options[i], t=norm(o.text); if(!t||o.value=='-1'||o.value=='0'||o.value=='') continue;
+     if(t==w){best=o;break;} if(!best&&Math.min(t.length,w.length)>=4&&(t.indexOf(w)>=0||w.indexOf(t)>=0)) best=o;} }
    if(!best) return false; s.value=best.value; s.dispatchEvent(new Event('change',{bubbles:true}));
-   try{ if(window.jQuery) window.jQuery(s).trigger('change'); }catch(e){} return true; }
- var out={found:false,district:false,sro:false,village:false,text:false,waiting:false};
+   try{ if(window.jQuery) window.jQuery(s).trigger('change'); }catch(e){} return best.text; }
+ function sample(s){var a=[]; if(!s) return a; for(var i=0;i<s.options.length&&a.length<6;i++){var o=s.options[i]; if(o.value!='-1'&&o.value!='0'&&o.value!='') a.push(o.text.trim());} return a;}
+ var out={found:false,district:false,sro:false,village:false,text:false,waiting:false,step:'',miss:'',options:0,sample:[],ready:document.readyState};
  try{ document.querySelectorAll('.modal.in [data-dismiss="modal"], .modal.show [data-dismiss="modal"], .modal.in .close, .modal.show .close').forEach(function(b){try{b.click();}catch(e){}}); }catch(e){}
  var d=el(['districtList','[name="dr"]','zoneList']), s=el(['SROList']), v=el(['villageList']);
- if(!d){ return JSON.stringify(out); }
+ if(!d){ out.waiting=document.readyState!='complete'; out.step='form'; return JSON.stringify(out); }
  out.found=true;
- if(!chosen(d)){ try{ d.scrollIntoView({block:'center'}); }catch(e){} out.district=pick(d,P.district); out.waiting=out.district; return JSON.stringify(out); }
+ function txt(x){ return chosen(x)? x.options[x.selectedIndex].text.trim() : ''; }
+ out.sel={district:txt(d), sro:txt(s), village:txt(v)};
+ if(!chosen(d)){
+   out.step='district'; out.options=real(d); out.sample=sample(d);
+   if(out.options==0){ out.waiting=true; return JSON.stringify(out); }
+   try{ d.scrollIntoView({block:'center'}); }catch(e){}
+   var got=pick(d,P.district); out.district=!!got; out.waiting=!!got; if(!got) out.miss=(P.district[0]||''); return JSON.stringify(out); }
  out.district=true;
- if(s&&!chosen(s)){ if(s.options.length<=1){out.waiting=true; return JSON.stringify(out);} out.sro=pick(s,P.sro); out.waiting=out.sro; if(out.sro) return JSON.stringify(out); }
- else out.sro=chosen(s);
- if(v&&!chosen(v)){ if(v.options.length<=1){out.waiting=out.sro; } else { out.village=pick(v,P.village); out.waiting=out.village; if(out.village) return JSON.stringify(out);} }
- else out.village=chosen(v);
+ if(s&&!chosen(s)){
+   out.step='sro'; out.options=real(s); out.sample=sample(s);
+   if(out.options==0){ out.waiting=true; return JSON.stringify(out); }
+   if(!P.sro){ out.miss='(no SRO saved – pick it on the page)'; return JSON.stringify(out); }
+   var gs=pick(s,[P.sro]); out.sro=!!gs; out.waiting=!!gs; if(!gs){ out.miss=P.sro; return JSON.stringify(out);} return JSON.stringify(out); }
+ out.sro=chosen(s);
+ if(v&&!chosen(v)){
+   out.step='village'; out.options=real(v); out.sample=sample(v);
+   if(out.options==0){ out.waiting=out.sro; return JSON.stringify(out); }
+   var gv=pick(v,[P.village]); out.village=!!gv; out.waiting=!!gv; if(!gv){ out.miss=P.village||'(no village saved)'; return JSON.stringify(out);} return JSON.stringify(out); }
+ out.village=chosen(v);
+ out.step='text';
  if(P.survey){ var r=document.getElementById('surveyRadio'); if(r&&!r.checked){ try{r.click();}catch(e){} }
    var sv=document.getElementById('surveyName'); if(sv&&!sv.value){ sv.value=P.survey; sv.dispatchEvent(new Event('input',{bubbles:true})); out.text=true; } else if(sv) out.text=true; }
  else if(P.street){ var st=document.getElementById('streetName'); if(st&&!st.value){ st.value=P.street; st.dispatchEvent(new Event('input',{bubbles:true})); out.text=true; } else if(st) out.text=true; }
+ out.step='done';
  return JSON.stringify(out);
-})({district:${jsStr(place.district)},sro:${jsStr(place.sro)},village:${jsStr(place.village)},street:${jsStr(place.street)},survey:${jsStr(place.survey.substringBefore("/").trim().ifBlank { place.survey })}})
+})({district:[${districtSpellings(place.district).joinToString(",") { jsStr(it) }}],sro:${jsStr(place.sro)},village:${jsStr(place.village)},street:${jsStr(place.street)},survey:${jsStr(place.survey.substringBefore("/").trim().ifBlank { place.survey })}})
 """
 
 /**

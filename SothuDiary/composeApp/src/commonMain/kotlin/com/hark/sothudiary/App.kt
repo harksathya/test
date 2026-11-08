@@ -154,6 +154,13 @@ fun App(
         }
     }
 
+    // 2.4.0: the bundled LGD village list (district → taluk → village pickers), read once off the main thread.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching { com.hark.sothudiary.domain.land.VillageDirectory.install(platform.bundledText("tn_villages")) }
+        }
+    }
+
     // Real cover photos (and titles) for properties saved without one – once per session, in the background.
     LaunchedEffect(Unit) { runCatching { com.hark.sothudiary.domain.social.backfillCovers(repo, platform) } }
 
@@ -315,5 +322,7 @@ private fun RouteScreen(ctx: AppContext, r: Route) {
         is Route.FolderView -> FolderViewScreen(ctx, r)
         is Route.AreaRates -> AreaRatesScreen(ctx, r.propertyId, r.group, onBack = { ctx.nav.pop() })
         is Route.LandCheck -> LandCheckScreen(ctx, r.propertyId)
+        is Route.PriceCheck -> com.hark.sothudiary.ui.screens.PriceCheckScreen(ctx, r.propertyId)
+        is Route.Guideline -> com.hark.sothudiary.ui.screens.GuidelineScreen(ctx, r.propertyId)
     }
 }

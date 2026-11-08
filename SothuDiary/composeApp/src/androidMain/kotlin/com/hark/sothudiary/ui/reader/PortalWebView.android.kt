@@ -21,6 +21,8 @@ import kotlinx.serialization.json.JsonPrimitive
 
 private class PortalHolder { var view: WebView? = null }
 
+private const val DESKTOP_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
 /** 2.3.1: TNREGINET page in a WebView (JavaScript on, cookies kept, desktop-width page so the portal's layout fits). */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -32,12 +34,14 @@ actual fun PortalWebView(
     onResult: (String?) -> Unit,
     onPageLoaded: (String) -> Unit,
     onProgress: (Int) -> Unit,
+    onPageError: (String) -> Unit,
 ) {
     val holder = remember { PortalHolder() }
     val result by rememberUpdatedState(onResult)
     val loaded by rememberUpdatedState(onPageLoaded)
     val progress by rememberUpdatedState(onProgress)
     val currentScript by rememberUpdatedState(script)
+    val failed: (String) -> Unit = { msg -> onPageError(msg) }
 
     AndroidView(
         modifier = modifier,
@@ -49,10 +53,18 @@ actual fun PortalWebView(
                 settings.useWideViewPort = true
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
+                // 2.4.0: with multiple windows off, a page's window.open() (TNREGINET opens some results that way) loads
+                // in this same view; before, javaScriptCanOpenWindowsAutomatically = false silently blocked it.
                 settings.setSupportMultipleWindows(false)
-                settings.javaScriptCanOpenWindowsAutomatically = false
+                settings.javaScriptCanOpenWindowsAutomatically = true
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
+                settings.databaseEnabled = true
+                // TNREGINET still pulls some scripts / images over http: without this they are blocked on https pages.
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                // The guideline form ids were read from the desktop page; ask for the desktop layout.
+                settings.userAgentString = DESKTOP_UA
                 CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                         val scheme = request.url.scheme ?: return true
@@ -63,6 +75,18 @@ actual fun PortalWebView(
                         CookieManager.getInstance().flush()
                         progress(100)
                         loaded(u)
+                    }
+                    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+                        if (request.isForMainFrame) failed("page error ${error.errorCode}: ${error.description}")
+                    }
+                    override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: android.webkit.WebResourceResponse) {
+                        if (request.isForMainFrame) failed("HTTP ${response.statusCode} ${response.reasonPhrase.orEmpty()}")
+                    }
+                    @SuppressLint("WebViewClientOnReceivedSslError")
+                    override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
+                        // Never accept a bad certificate; say so in the status line.
+                        handler.cancel()
+                        failed("certificate error (${error.primaryError})")
                     }
                 }
                 webChromeClient = object : WebChromeClient() {

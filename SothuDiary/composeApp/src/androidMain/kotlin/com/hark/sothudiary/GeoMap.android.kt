@@ -59,6 +59,62 @@ private class MapHolder {
     var onPinDragging: ((String, Double, Double) -> Unit)? = null
     var pins: List<MapPin> = emptyList()
     var sketchSignature: MapSketch? = null
+    // 2.4.0
+    var onViewport: ((MapViewport) -> Unit)? = null
+    var lastFly: Triple<Double, Double, Double>? = null
+}
+
+/** 2.4.0: reports the visible box after scrolling / zooming (debounced by osmdroid's own listener). */
+private fun reportViewport(map: MapView, holder: MapHolder) {
+    val cb = holder.onViewport ?: return
+    val b = map.boundingBox ?: return
+    if (b.latNorth.isNaN() || b.lonEast.isNaN()) return
+    cb(MapViewport(b.latSouth, b.lonWest, b.latNorth, b.lonEast, map.zoomLevelDouble))
+}
+
+private val tagCache = HashMap<String, Drawable>()
+
+/** 2.4.0: a rounded price tag with a small pointer, e.g. "₹9.8k", in [color] (selected: bigger with a dark ring). */
+private fun tagDrawable(context: Context, text: String, color: Long, selected: Boolean): Drawable {
+    val key = "t$text|$color|$selected"
+    tagCache[key]?.let { return it }
+    val d = context.resources.displayMetrics.density
+    val tp = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = (if (selected) 14f else 12f) * d; this.color = 0xFFFFFFFF.toInt(); typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+    val padX = 7 * d; val padY = 4 * d; val tail = 5 * d
+    val tw = tp.measureText(text)
+    val w = (tw + 2 * padX).toInt().coerceAtLeast((18 * d).toInt())
+    val bh = (tp.textSize + 2 * padY)
+    val h = (bh + tail).toInt() + 2
+    val bmp = Bitmap.createBitmap(w + 4, h + 2, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toInt() }
+    val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = if (selected) 0xFF1D1C1A.toInt() else 0xFFFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = (if (selected) 2.5f else 1.5f) * d }
+    val r = android.graphics.RectF(2f, 1f, w + 2f, bh)
+    c.drawRoundRect(r, bh / 2, bh / 2, fill)
+    c.drawRoundRect(r, bh / 2, bh / 2, ring)
+    val path = Path().apply { moveTo((w + 4) / 2f - tail, bh - 1); lineTo((w + 4) / 2f, bh + tail); lineTo((w + 4) / 2f + tail, bh - 1); close() }
+    c.drawPath(path, fill)
+    c.drawText(text, (w + 4 - tw) / 2f, padY + tp.textSize * 0.82f + 1f, tp)
+    return BitmapDrawable(context.resources, bmp).also { tagCache[key] = it }
+}
+
+/** 2.4.0: a round cluster bubble with the number of pins inside. */
+private fun clusterDrawable(context: Context, count: Int, color: Long): Drawable {
+    val key = "c$count|$color"
+    tagCache[key]?.let { return it }
+    val d = context.resources.displayMetrics.density
+    val size = ((if (count >= 100) 46 else if (count >= 10) 40 else 34) * d).toInt()
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val r = size / 2f
+    c.drawCircle(r, r, r - 1, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = ((color and 0x00FFFFFFL) or 0x55000000L).toInt() })
+    c.drawCircle(r, r, r * 0.74f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toInt() })
+    val tp = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 13 * d; this.color = 0xFFFFFFFF.toInt(); typeface = android.graphics.Typeface.DEFAULT_BOLD }
+    val t = count.toString()
+    c.drawText(t, r - tp.measureText(t) / 2, r + tp.textSize * 0.36f, tp)
+    return BitmapDrawable(context.resources, bmp).also { tagCache[key] = it }
 }
 
 /**
@@ -241,6 +297,8 @@ actual fun GeoMap(
     shapes: List<MapShape>,
     onPinDragging: ((String, Double, Double) -> Unit)?,
     sketch: MapSketch?,
+    onViewport: ((MapViewport) -> Unit)?,
+    flyTo: Triple<Double, Double, Double>?,
 ) {
     // Never place or fit anything at an invalid coordinate (NaN, out of range, or 0,0).
     @Suppress("NAME_SHADOWING")
@@ -252,6 +310,7 @@ actual fun GeoMap(
     holder.onPinClick = onPinClick
     holder.onPinDragging = onPinDragging
     holder.pins = pins
+    holder.onViewport = onViewport
 
     AndroidView(
         modifier = modifier,
@@ -283,6 +342,11 @@ actual fun GeoMap(
                 )
                 // 2.3.0: live pin dragging (above the tap overlay so a touch on a pin never adds a corner).
                 overlays.add(PinDragOverlay(holder))
+                // 2.4.0: the visible area for clustering / "N in view" (after the user stops panning or zooming).
+                addMapListener(org.osmdroid.events.DelayedMapListener(object : org.osmdroid.events.MapListener {
+                    override fun onScroll(event: org.osmdroid.events.ScrollEvent?): Boolean { reportViewport(this@apply, holder); return false }
+                    override fun onZoom(event: org.osmdroid.events.ZoomEvent?): Boolean { reportViewport(this@apply, holder); return false }
+                }, 250))
                 holder.map = this
             }
         },
@@ -339,6 +403,12 @@ actual fun GeoMap(
                     if (pin.handle) {
                         m.icon = handleDrawable(map.context, pin.color)
                         m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    } else if (pin.count > 1) {
+                        m.icon = clusterDrawable(map.context, pin.count, pin.color)
+                        m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    } else if (pin.label.isNotBlank()) {
+                        m.icon = tagDrawable(map.context, pin.label, pin.color, pin.selected)
+                        m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     } else {
                         m.icon = pinDrawable(map.context, pin.color, pin.small)
                         m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
@@ -361,6 +431,10 @@ actual fun GeoMap(
                     }
                     map.overlays.add(m)
                 }
+            }
+            if (flyTo != null && holder.lastFly != flyTo) {
+                holder.lastFly = flyTo
+                map.controller.animateTo(GeoPoint(flyTo.first, flyTo.second), flyTo.third, 400L)
             }
             if (holder.lastKey != cameraKey) {
                 holder.lastKey = cameraKey
@@ -392,7 +466,8 @@ actual fun GeoMap(
                         }
                     }
                 }
-                if (map.isLayoutOccurred) move() else map.addOnFirstLayoutListener { _, _, _, _, _ -> move() }
+                if (map.isLayoutOccurred) { move(); reportViewport(map, holder) }
+                else map.addOnFirstLayoutListener { _, _, _, _, _ -> move(); reportViewport(map, holder) }
             }
             map.invalidate()
         },

@@ -28,6 +28,10 @@ sealed interface Route {
     data class AreaRates(val propertyId: String? = null, val group: Int? = null) : Route
     /** 2.2.0: land check (map data layers + AI) of one property. */
     data class LandCheck(val propertyId: String) : Route
+    /** 2.4.0: the price check of one property, on its own screen. */
+    data class PriceCheck(val propertyId: String) : Route
+    /** 2.4.0: guideline value + stamp duty of one property, on its own screen. */
+    data class Guideline(val propertyId: String) : Route
 }
 
 /** Simple state-based navigation: a selected tab plus a stack of detail/edit routes. */

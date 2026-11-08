@@ -15,7 +15,18 @@ data class MapPin(
     val small: Boolean = false,
     /** 2.3.0: drawn as a small round handle (plot corner editing) instead of a teardrop pin. */
     val handle: Boolean = false,
+    /** 2.4.0: drawn as a price tag ("₹9.8k") in [color] instead of a teardrop pin. */
+    val label: String = "",
+    /** 2.4.0: a cluster of this many pins (a round bubble with the count); tapping zooms in. */
+    val count: Int = 0,
+    /** 2.4.0: highlighted (selected) – drawn larger with a dark outline. */
+    val selected: Boolean = false,
 )
+
+/** 2.4.0: the visible map area and zoom, reported after the user pans / zooms. */
+data class MapViewport(val south: Double, val west: Double, val north: Double, val east: Double, val zoom: Double) {
+    fun contains(lat: Double, lng: Double) = lat in south..north && lng in west..east
+}
 
 /**
  * 2.3.0: an image (FMB sketch) drawn on the map with its four corners pinned to map points (top-left, top-right,
@@ -66,4 +77,8 @@ expect fun GeoMap(
     onPinDragging: ((String, Double, Double) -> Unit)? = null,
     /** 2.3.0: an FMB sketch image laid over the map (Android). */
     sketch: MapSketch? = null,
+    /** 2.4.0: called with the visible area after each pan / zoom (for clustering and "N in view"). */
+    onViewport: ((MapViewport) -> Unit)? = null,
+    /** 2.4.0: a request to fly to a point / zoom (changes of this value move the camera). */
+    flyTo: Triple<Double, Double, Double>? = null,
 )

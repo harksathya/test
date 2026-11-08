@@ -20,6 +20,7 @@ actual fun PortalWebView(
     onResult: (String?) -> Unit,
     onPageLoaded: (String) -> Unit,
     onProgress: (Int) -> Unit,
+    onPageError: (String) -> Unit,
 ) {
     Box(modifier, contentAlignment = Alignment.Center) {
         Text(S.gvNoWebView.s(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))

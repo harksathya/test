@@ -38,7 +38,7 @@ jobs:
         with:
           tag_name: sothu-diary-latest
           name: Sothu Diary (latest build)
-          body: Debug APK of Sothu Diary (சொத்து டைரி) v2.0 built from ${{ github.sha }}. Install on Android (allow installs from unknown sources).
+          body: Debug APK of Sothu Diary (சொத்து டைரி) built from ${{ github.sha }}. Install on Android (allow installs from unknown sources).
           prerelease: false
           make_latest: false
           files: SothuDiary/SothuDiary.apk

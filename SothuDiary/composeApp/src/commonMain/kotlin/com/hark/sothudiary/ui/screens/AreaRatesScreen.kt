@@ -6,6 +6,7 @@ import com.hark.sothudiary.domain.formatDateShort
 import com.hark.sothudiary.domain.pricing.freshLookup
 import com.hark.sothudiary.domain.pricing.latestLookup
 import com.hark.sothudiary.domain.pricing.liveLookup
+import com.hark.sothudiary.domain.pricing.PriceRules
 import com.hark.sothudiary.ui.components.FindOnlineButton
 import com.hark.sothudiary.ui.components.GeminiKeyDialog
 import com.hark.sothudiary.ui.components.GeminiSetupCard
@@ -134,6 +135,8 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
     }
 
     fun lookup(t: AreaTarget, force: Boolean) {
+        // 2.4.0: no automatic online price data (user decision) – rates come from the user's own entries.
+        if (!PriceRules.ONLINE_LOOKUP) return
         val key = data.settings.geminiApiKey
         val la = t.lat; val ln = t.lng
         if (key.isBlank()) { if (force) askKey = true; return }
@@ -251,7 +254,8 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (data.settings.geminiApiKey.isNotBlank()) FindOnlineButton({ lookup(t, force = true) }, finding, prominent = est.insufficient)
+                    if (!PriceRules.ONLINE_LOOKUP) com.hark.sothudiary.ui.screens.AddRateButton(ctx, t.name, t.lat, t.lng, group)
+                    else if (data.settings.geminiApiKey.isNotBlank()) FindOnlineButton({ lookup(t, force = true) }, finding, prominent = est.insufficient)
                     else Button(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth()) { Text(S.setUpLiveCheck.s()) }
                     val failed = latest?.error
                     if (failed != null && failed != "no_key") LookupErrorNote(failed, latest.retryAt)

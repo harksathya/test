@@ -17,4 +17,6 @@ expect fun PortalWebView(
     onResult: (String?) -> Unit,
     onPageLoaded: (String) -> Unit,
     onProgress: (Int) -> Unit,
+    /** 2.4.0: the main page failed to load (HTTP / network / certificate) – shown in the Status panel. */
+    onPageError: (String) -> Unit = {},
 )

@@ -106,12 +106,34 @@ class MainActivity : ComponentActivity(), ActivityBridge {
         super.onDestroy()
     }
 
+    /** Reads a property file off the main thread and hands its share code to the import screen. */
+    private fun readPropertyFile(uri: Uri) {
+        Thread {
+            val text = AndroidShare.readUri(applicationContext, uri)
+            val code = com.hark.sothudiary.domain.share.codeFromFileText(text)
+            runOnUiThread {
+                // A file that is not ours opens the import dialog with its "could not read" message.
+                incomingLink = if (code != null) "sothudiary://p?d=$code" else "sothudiary://p?d=bad"
+            }
+        }.start()
+    }
+
     private fun handleIntent(intent: Intent?) {
         if (intent?.getStringExtra(Reminders.EXTRA_OPEN) == Reminders.OPEN_FOLLOWUPS) openFollowUps = true
         val action = intent?.action ?: return
         if (action == Intent.ACTION_VIEW) {
             // 2.3.0: sothudiary://p?d=… or https://harksathya.github.io/test/p/#…
-            intent.dataString?.takeIf { it.startsWith("sothudiary:") || it.contains("harksathya.github.io/test/p") }?.let { incomingLink = it }
+            val data = intent.dataString
+            if (data != null && (data.startsWith("sothudiary:") || data.contains("harksathya.github.io/test/p"))) { incomingLink = data; return }
+            // 2.4.0: a .sothu property file (content:// or file://).
+            intent.data?.let { readPropertyFile(it) }
+            return
+        }
+        // 2.4.0: a .sothu file shared into the app (SEND with a file, not text / images).
+        val type = intent.type.orEmpty()
+        if (action == Intent.ACTION_SEND && (type.startsWith("application/"))) {
+            @Suppress("DEPRECATION")
+            (intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri)?.let { readPropertyFile(it) }
             return
         }
         if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return

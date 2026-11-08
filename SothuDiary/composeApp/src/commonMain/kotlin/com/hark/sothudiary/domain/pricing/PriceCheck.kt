@@ -108,7 +108,15 @@ data class PriceCheck(
     val guideline: Double? get() = estimate.guideline?.value
 }
 
+/** 2.4.0: [OnlineRate.lookupKey] of a rate the user entered or pasted – kept until they delete it (never expires). */
+const val USER_RATE_KEY = "user"
+
 object PriceRules {
+    /**
+     * 2.4.0 (user decision, 2026-11-08): no automatic online price data. Prices come from the user's own listings and
+     * the rates they enter or paste ("Add a rate you saw"); the 2.1–2.3 Gemini / web-search lookup is kept but off.
+     */
+    const val ONLINE_LOOKUP = false
     /** Normal search radius (km) for every type. */
     fun baseKm(@Suppress("UNUSED_PARAMETER") group: Int): Double = BASE_KM
     /** The radius widens to [MAX_KM] when fewer than [MIN_COMPS] are found – never beyond. */
@@ -248,7 +256,7 @@ fun estimateMarket(
     }
 
     // (b) live-lookup rates (cache) – asking prices of the same group, not older than the cache period
-    data.onlineRates.filter { it.group == group && it.kind == RateKind.ASKING && isFresh(it.fetchedAt, now) }.forEach { r ->
+    data.onlineRates.filter { it.group == group && it.kind == RateKind.ASKING && (it.lookupKey == USER_RATE_KEY || isFresh(it.fetchedAt, now)) }.forEach { r ->
         val (mn, mx, mid) = r.inBasis(basis)
         val m = mid?.orNullIfBad() ?: return@forEach
         val d = distance(point, r.lat, r.lng)
@@ -329,7 +337,7 @@ fun guidelineAt(point: AreaPoint, group: Int, data: AppData, now: Long = com.har
     if (group == 2 || group == 3) return null
     if (point.lat == null || point.lng == null) return null
     val nearKm = if (group == 1) PriceRules.GUIDELINE_AGRI_NEAR_KM else PriceRules.GUIDELINE_NEAR_KM
-    val online = data.onlineRates.filter { it.group == group && it.kind == RateKind.GUIDELINE && isFresh(it.fetchedAt, now) }
+    val online = data.onlineRates.filter { it.group == group && it.kind == RateKind.GUIDELINE && (it.lookupKey == USER_RATE_KEY || isFresh(it.fetchedAt, now)) }
         .mapNotNull { r -> distance(point, r.lat, r.lng)?.let { r to it } }
         .filter { it.second <= nearKm }
         .minByOrNull { it.second } ?: return null

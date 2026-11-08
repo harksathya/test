@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 2.4.0: share card images and .sothu property files made for the share sheet. -->
+    <cache-path name="share" path="share/" />
+</paths>

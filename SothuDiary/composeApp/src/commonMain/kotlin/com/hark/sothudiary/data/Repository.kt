@@ -52,7 +52,9 @@ fun migrate(d: AppData): AppData {
         settings = d.settings.copy(geminiModel = normalizeGeminiModel(d.settings.geminiModel)),
         properties = d.properties.filterNot { it.sample }
             .map { if (it.brokerId != null && it.brokerId in sampleBrokers) it.copy(brokerId = null) else it }
-            .map { com.hark.sothudiary.domain.repairTitle(it, d.settings.lang) },
+            .map { com.hark.sothudiary.domain.repairTitle(it, d.settings.lang) }
+            // 2.4.0: one shared land record, filled from the older scattered fields (nothing is dropped).
+            .map { if (it.land.isEmpty) mirrorToLegacy(it.copy(land = landFromLegacy(it))) else it },
     )
 }
 
@@ -85,9 +87,22 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
     }
 
     override fun update(transform: (AppData) -> AppData) {
-        val next = transform(data)
+        val prev = data
+        val next = syncLand(prev, transform(prev))
         data = next
         persist(next)
+    }
+
+    /** 2.4.0: every changed property keeps its land record and the older fields in step ([reconcileLand]). */
+    private fun syncLand(prev: AppData, next: AppData): AppData {
+        if (prev.properties === next.properties) return next
+        val before = prev.properties.associateBy { it.id }
+        var changed = false
+        val props = next.properties.map { p ->
+            val old = before[p.id]
+            if (old === p) p else reconcileLand(old, p).also { if (it !== p) changed = true }
+        }
+        return if (changed) next.copy(properties = props) else next
     }
 
     private fun persist(d: AppData) {
@@ -273,10 +288,28 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
         d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(surveyNumber = com.hark.sothudiary.domain.land.normalizeSurveyNumber(survey).take(40), updatedAt = nowMillis()) else it })
     }
 
+    /** 2.4.0: saves the shared land details (the older fields follow). */
+    fun setLand(propertyId: String, land: LandRecord) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(land = land, updatedAt = nowMillis()) else it })
+    }
+
+    /** 2.4.0: blank district / taluk / village filled from the map address of the pin (never overwrites typed values). */
+    fun fillLandFromMap(propertyId: String, district: String, taluk: String, village: String) = update { d ->
+        d.copy(properties = d.properties.map { p ->
+            if (p.id != propertyId) p else {
+                val l = p.land.fillFromMap(district, taluk, village)
+                if (l == p.land) p else p.copy(land = l)
+            }
+        })
+    }
+
     /** 2.3.1: TNREGINET place / guideline value / land area of a property. */
     fun setRegistry(propertyId: String, registry: RegistryInfo) = update { d ->
         d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(registry = registry, updatedAt = nowMillis()) else it })
     }
+
+    /** 2.4.0: weights of the property score. */
+    fun setScoreWeights(w: ScoreWeights) = update { d -> d.copy(settings = d.settings.copy(scoreWeights = w)) }
 
     /** 2.3.1: stamp duty and registration fee rates (percent). */
     fun setDutyRates(stampPct: Double, regPct: Double) = update { d ->

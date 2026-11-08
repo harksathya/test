@@ -45,7 +45,9 @@ fun lookupKey(lat: Double, lng: Double, group: Int): String {
     return "${r(lat)},${r(lng)}|$group"
 }
 
-/** A lookup for this type done within 1.5 km of the point in the last [PriceRules.CACHE_DAYS] days (reuse it). */
+/**
+ * A lookup for this type done within 1.5 km of the point in the last [PriceRules.CACHE_DAYS] days (reuse it).
+ */
 fun freshLookup(data: AppData, lat: Double, lng: Double, group: Int, now: Long = nowMillis()): RateLookup? =
     data.rateLookups
         .filter { it.group == group && it.error == null && now - it.fetchedAt < PriceRules.CACHE_DAYS * DAY_MS }
@@ -240,7 +242,8 @@ private suspend fun callGemini(apiKey: String, model: String, body: String): Cal
         method = "POST",
         headers = mapOf("Content-Type" to "application/json"),
         body = body,
-        timeoutMs = 90_000,
+        // 2.4.0: 40 s per call (was 90 s): with up to three models tried, a slow answer no longer holds the check for minutes.
+        timeoutMs = 40_000,
     ) ?: return CallResult.Offline
     if (!r.ok) return CallResult.Fail(parseGeminiError(r.code, r.body))
     val cand = parseJsonOrNull(r.body).at("candidates", 0)
@@ -468,22 +471,49 @@ suspend fun liveLookup(
 ): LiveLookupResult {
     val key = lookupKey(lat, lng, group)
     val now = nowMillis()
-    if (apiKey.isBlank()) return LiveLookupResult(RateLookup(key, lat, lng, group, placeHint, now, error = "no_key"), emptyList(), "no_key")
+    val t0 = nowMillis()
     val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
+    val geoLine = com.hark.sothudiary.data.SourceStatus("OpenStreetMap Nominatim (place name)", rev != null,
+        rev?.let { listOf(it.locality, it.taluk, it.district).filter { s -> s.isNotBlank() }.joinToString(", ") } ?: "no answer – using the saved place", nowMillis() - t0)
     val place = describePlace(rev, placeHint)
+    // Without a Gemini key there is no online lookup: the price check uses the user's own listings and the saved
+    // guideline value (2.4.0 says so plainly instead of silently doing nothing). No price site is fetched automatically.
+    if (apiKey.isBlank()) return LiveLookupResult(
+        RateLookup(key, lat, lng, group, place, now, error = "no_key", status = listOf(geoLine,
+            com.hark.sothudiary.data.SourceStatus("Gemini + Google Search", null, "skipped – no Gemini key (optional)"))),
+        emptyList(), "no_key")
     val prompt = buildLivePrompt(place, lat, lng, group)
-    return when (val g = groundedGenerate(apiKey, model, prompt, now, priceSearchQueries(rev, placeHint, group))) {
+    val t1 = nowMillis()
+    val g = kotlinx.coroutines.withTimeoutOrNull(75_000) { groundedGenerate(apiKey, model, prompt, now, priceSearchQueries(rev, placeHint, group)) }
+        ?: Grounded.Failed("[other] The AI search took too long (75 s).", 0L, "auto")
+    val aiMs = nowMillis() - t1
+    return when (g) {
         is Grounded.Ok -> {
             val (out, skipped) = placeComparables(g.text, g.sources, lat, lng, group, rev, key, now, if (g.viaSearch) g.hits else null)
+            val status = listOf(geoLine, com.hark.sothudiary.data.SourceStatus(
+                if (g.viaSearch) "Web search + Gemini (${g.model})" else "Gemini + Google Search (${g.model})", true,
+                "${out.size} rates kept within ${PriceRules.MAX_KM.toInt()} km, $skipped dropped", aiMs, "sources: " + g.sources.take(6).joinToString(" ")))
             LiveLookupResult(RateLookup(key, lat, lng, group, place, now, out.size, skipped, g.model, null, g.sources.take(12), viaSearch = g.viaSearch,
                 // Nothing usable from the AI: keep the search results so they can still be read.
-                snippets = if (g.viaSearch && out.isEmpty()) g.hits.take(8) else emptyList()), out)
+                snippets = if (g.viaSearch && out.isEmpty()) g.hits.take(8) else emptyList(),
+                status = status), out)
         }
         is Grounded.Failed -> LiveLookupResult(
-            RateLookup(key, lat, lng, group, place, now, model = g.model, error = g.error, retryAt = g.retryAt, snippets = g.snippets.take(8)),
+            RateLookup(key, lat, lng, group, place, now, model = g.model, error = g.error, retryAt = g.retryAt, snippets = g.snippets.take(8),
+                status = listOf(geoLine, com.hark.sothudiary.data.SourceStatus("Gemini (${g.model})", false, shortAiError(g.error), aiMs, g.error.take(300)))),
             emptyList(), g.error,
         )
     }
+}
+
+/** 2.4.0: one short line for an AI error (Status panel). */
+fun shortAiError(e: String): String = when (classifyLookupError(e)) {
+    LookupErrorKind.NO_KEY -> "no Gemini key"
+    LookupErrorKind.NETWORK -> "no internet / timeout"
+    LookupErrorKind.QUOTA -> "free quota used up for now"
+    LookupErrorKind.BAD_KEY -> "the Gemini key was refused"
+    LookupErrorKind.MODEL_UNAVAILABLE -> "model not available for this key"
+    else -> e.substringAfter("] ").take(90)
 }
 
 private fun groupQueryWords(group: Int): String = when (group) {

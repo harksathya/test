@@ -3,7 +3,7 @@ package com.hark.sothudiary.domain.web
 import com.hark.sothudiary.data.WebSnippet
 import com.hark.sothudiary.domain.social.htmlDecode
 import com.hark.sothudiary.domain.urlEncode
-import com.hark.sothudiary.httpRequest
+import com.hark.sothudiary.httpCall
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -21,32 +21,52 @@ object WebSearch {
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
 
     /** Searches [query]; at most [max] results. Empty on any failure. */
-    suspend fun search(query: String, max: Int = 8): List<WebSnippet> {
+    suspend fun search(query: String, max: Int = 8): List<WebSnippet> = searchWithStatus(query, max).first
+
+    /**
+     * 2.4.0: [search] plus one status line per engine tried ("DuckDuckGo: 10 results", "DuckDuckGo Lite: blocked (robot
+     * check, HTTP 202)" …). Checked from a test machine on 2026-11-08: the DuckDuckGo HTML endpoint answered 200 with
+     * results, DuckDuckGo Lite answered 202 with its robot check, Bing RSS answered 200 with one item.
+     */
+    suspend fun searchWithStatus(query: String, max: Int = 8): Pair<List<WebSnippet>, List<com.hark.sothudiary.domain.land.SourceStatusLine>> {
         val q = query.trim()
-        if (q.isBlank()) return emptyList()
-        val ddg = runCatching {
-            httpRequest(
-                "https://html.duckduckgo.com/html/", method = "POST",
-                headers = mapOf("User-Agent" to UA, "Content-Type" to "application/x-www-form-urlencoded", "Accept" to "text/html", "Accept-Language" to "en-IN,en;q=0.8"),
-                body = "q=" + urlEncode(q) + "&kl=in-en", timeoutMs = 15_000,
-            )
-        }.getOrNull()
-        if (ddg != null && ddg.code == 200 && !isBlockedPage(ddg.body)) parseDuckDuckGoHtml(ddg.body).takeIf { it.isNotEmpty() }?.let { return it.take(max) }
-        val lite = runCatching {
-            httpRequest("https://lite.duckduckgo.com/lite/?kl=in-en&q=" + urlEncode(q), headers = mapOf("User-Agent" to UA, "Accept" to "text/html"), timeoutMs = 15_000)
-        }.getOrNull()
-        if (lite != null && lite.code == 200 && !isBlockedPage(lite.body)) parseDuckDuckGoLite(lite.body).takeIf { it.isNotEmpty() }?.let { return it.take(max) }
-        val bing = runCatching {
-            httpRequest("https://www.bing.com/search?format=rss&cc=IN&setlang=en&q=" + urlEncode(q), headers = mapOf("User-Agent" to UA, "Accept" to "application/rss+xml"), timeoutMs = 15_000)
-        }.getOrNull()
-        if (bing != null && bing.ok) return relevantOnly(parseBingRss(bing.body), q).take(max)
-        return emptyList()
+        if (q.isBlank()) return emptyList<WebSnippet>() to emptyList()
+        val lines = mutableListOf<com.hark.sothudiary.domain.land.SourceStatusLine>()
+        fun line(engine: String, r: com.hark.sothudiary.HttpResult, n: Int?) {
+            val reason = when {
+                r.code < 0 -> r.error ?: "no answer"
+                r.code == 202 || (r.code == 200 && isBlockedPage(r.body) && engine.startsWith("Duck")) -> "blocked (robot check, HTTP ${r.code})"
+                !r.ok -> "HTTP ${r.code}"
+                n == 0 -> "no results"
+                else -> "$n results"
+            }
+            lines += com.hark.sothudiary.domain.land.SourceStatusLine("Web search · $engine", (n ?: 0) > 0, reason, r.ms, "query: $q")
+        }
+        val ddg = httpCall(
+            "https://html.duckduckgo.com/html/", method = "POST",
+            headers = mapOf("User-Agent" to UA, "Content-Type" to "application/x-www-form-urlencoded", "Accept" to "text/html", "Accept-Language" to "en-IN,en;q=0.8"),
+            body = "q=" + urlEncode(q) + "&kl=in-en", timeoutMs = 12_000,
+        )
+        val ddgHits = if (ddg.code == 200 && !isBlockedPage(ddg.body)) parseDuckDuckGoHtml(ddg.body) else emptyList()
+        line("DuckDuckGo", ddg, if (ddg.code == 200 && !isBlockedPage(ddg.body)) ddgHits.size else null)
+        if (ddgHits.isNotEmpty()) return ddgHits.take(max) to lines
+        val lite = httpCall("https://lite.duckduckgo.com/lite/?kl=in-en&q=" + urlEncode(q), headers = mapOf("User-Agent" to UA, "Accept" to "text/html"), timeoutMs = 12_000)
+        val liteHits = if (lite.code == 200 && !isBlockedPage(lite.body)) parseDuckDuckGoLite(lite.body) else emptyList()
+        line("DuckDuckGo Lite", lite, if (lite.code == 200 && !isBlockedPage(lite.body)) liteHits.size else null)
+        if (liteHits.isNotEmpty()) return liteHits.take(max) to lines
+        val bing = httpCall("https://www.bing.com/search?format=rss&cc=IN&setlang=en&q=" + urlEncode(q), headers = mapOf("User-Agent" to UA, "Accept" to "application/rss+xml"), timeoutMs = 12_000)
+        val bingHits = if (bing.ok) relevantOnly(parseBingRss(bing.body), q) else emptyList()
+        line("Bing", bing, if (bing.ok) bingHits.size else null)
+        return bingHits.take(max) to lines
     }
 
     /** Several queries in parallel, results merged (first query first), one result per page, at most [max]. */
-    suspend fun searchAll(queries: List<String>, max: Int = 10): List<WebSnippet> = coroutineScope {
-        queries.filter { it.isNotBlank() }.distinct().take(4).map { q -> async { search(q, 6) } }.flatMap { it.await() }
-            .let(::dedupeByUrl).take(max)
+    suspend fun searchAll(queries: List<String>, max: Int = 10): List<WebSnippet> = searchAllWithStatus(queries, max).first
+
+    /** 2.4.0: [searchAll] plus the engines' status lines. */
+    suspend fun searchAllWithStatus(queries: List<String>, max: Int = 10): Pair<List<WebSnippet>, List<com.hark.sothudiary.domain.land.SourceStatusLine>> = coroutineScope {
+        val answers = queries.filter { it.isNotBlank() }.distinct().take(4).map { q -> async { searchWithStatus(q, 6) } }.map { it.await() }
+        dedupeByUrl(answers.flatMap { it.first }).take(max) to answers.flatMap { it.second }
     }
 }
 

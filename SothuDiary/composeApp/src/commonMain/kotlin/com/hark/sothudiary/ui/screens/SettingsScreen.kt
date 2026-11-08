@@ -53,7 +53,7 @@ import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.domain.dec
 
-const val APP_VERSION = "2.3.1"
+const val APP_VERSION = "2.4.0"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -191,6 +191,8 @@ fun SettingsScreen(ctx: AppContext) {
                 if (editRates) DutyRatesDialog(ctx) { editRates = false }
             }
 
+            // 2.4.0: weights of the 0–100 property score.
+            ScoreWeightsCard(ctx)
             SectionCard(title = S.howPriceCheckWorks.s()) {
                 Text(S.priceRulesText.s(), style = MaterialTheme.typography.bodyMedium)
             }
@@ -202,6 +204,8 @@ fun SettingsScreen(ctx: AppContext) {
                 Text(S.disclaimer.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 Text(S.bgmCredit.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                Text(com.hark.sothudiary.i18n.S4.villageDataCredit.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(24.dp))
         }

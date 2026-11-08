@@ -166,6 +166,16 @@ Debug APK (latest build): https://github.com/harksathya/test/releases/download/s
 - Licence: Creative Commons CC0 1.0 Universal Public Domain Dedication (stated on the Commons file page)
 - No copyrighted film music is bundled; users can choose their own song.
 
+### Village list – credit and licence
+
+- File: `composeApp/src/androidMain/res/raw/tn_villages.txt` (Tamil Nadu districts › taluks › villages)
+- Compiled by https://github.com/mchittineni/india-village-finder v1.3.0 (code MIT; data GODL-India, see its `DATA_LICENSE.md`)
+- Contains administrative data from the **Local Government Directory (LGD)**, Ministry of Panchayati Raj, Government of
+  India, used under the **Government Open Data License – India (GODL-India)**
+  (https://data.gov.in/government-open-data-license-india), accessed via the data.gov.in open-data API.
+- Modified: Tamil Nadu only, reformatted to `District|Taluk|village;village;…`. Provided as is; not endorsed by the
+  Government of India. Verify official names on https://lgdirectory.gov.in.
+
 ## What's new in v2.0
 
 | Area | What it does |

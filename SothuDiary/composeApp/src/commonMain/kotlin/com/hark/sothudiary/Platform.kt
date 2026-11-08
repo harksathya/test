@@ -55,7 +55,34 @@ interface PlatformActions {
 
     /** 2.3.0: height / width of a stored image (to keep an FMB sketch's proportions on the map), null if unknown. */
     fun imageAspect(fileName: String): Double? = null
+
+    /** 2.4.0: a text file bundled with the app ("tn_villages": the LGD / GODL village directory), null if missing. */
+    fun bundledText(name: String): String? = null
+
+    /**
+     * 2.4.0: opens the system share sheet with [text] and files made by the app ([files]: absolute paths in app
+     * storage, with their MIME type). Falls back to [shareText] where files are not supported.
+     */
+    fun shareFiles(subject: String, text: String, files: List<Pair<String, String>>) = shareText(subject, text)
+
+    /** 2.4.0: draws a share card (Instagram / WhatsApp status size) and returns its file path, null when unsupported. */
+    fun renderShareCard(card: ShareCard): String? = null
+
+    /** 2.4.0: writes [text] to a file in the app's share folder and returns its absolute path. */
+    fun writeShareFile(fileName: String, text: String): String? = null
 }
+
+/** 2.4.0: what goes on a "Share as image" card. Lines are already in the user's language. */
+data class ShareCard(
+    val title: String,
+    val price: String,
+    val facts: List<String>,
+    val place: String,
+    val coverPath: String?,
+    val appName: String,
+    val badge: String = "",
+    val badgeColor: Long = 0xFF2E7D32,
+)
 
 /** Background music: a quiet looping track while the app is in the foreground. */
 interface MusicActions {
@@ -145,30 +172,56 @@ object NoAudio : AudioActions {
 expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
 
 /** Simple HTTP GET returning the body, or null on any error. Runs off the main thread. */
-expect suspend fun httpGet(url: String, userAgent: String): String?
+suspend fun httpGet(url: String, userAgent: String): String? =
+    httpRequest(url, headers = mapOf("User-Agent" to userAgent, "Accept" to "application/json"))?.takeIf { it.ok }?.body
 
-/** Result of [httpRequest]: status code, body (also for errors), the redirect target and the final URL after redirects. */
-data class HttpResult(val code: Int, val body: String?, val location: String?, val finalUrl: String) {
+/**
+ * Result of [httpRequest]: status code, body (also for errors), the redirect target and the final URL after redirects.
+ * 2.4.0: [code] is -1 when no answer came at all; [error] then says why ("timeout", "no internet", "TLS" …) and [ms]
+ * how long the call took – shown in the checks' Status / நிலை panels.
+ */
+data class HttpResult(val code: Int, val body: String?, val location: String?, val finalUrl: String, val error: String? = null, val ms: Long = 0) {
     val ok: Boolean get() = code in 200..299
+    val failed: Boolean get() = code < 0
 }
 
 /**
  * General HTTP request (GET / POST with headers). Follows redirects across hosts when [followRedirects]
  * (GET only), otherwise returns the 3xx with its [HttpResult.location]. Null on network errors.
  */
-expect suspend fun httpRequest(
+suspend fun httpRequest(
     url: String,
     method: String = "GET",
     headers: Map<String, String> = emptyMap(),
     body: String? = null,
     followRedirects: Boolean = true,
     timeoutMs: Int = 20_000,
-): HttpResult?
+): HttpResult? = httpCall(url, method, headers, body, followRedirects, timeoutMs).takeUnless { it.failed }
+
+/**
+ * 2.4.0: like [httpRequest] but never null – a call with no answer comes back with code -1 and the reason in
+ * [HttpResult.error]. Cancellable: leaving the coroutine closes the connection at once (no thread is left hanging).
+ * [timeoutMs] is the whole call (connect + read) for one hop.
+ */
+expect suspend fun httpCall(
+    url: String,
+    method: String = "GET",
+    headers: Map<String, String> = emptyMap(),
+    body: String? = null,
+    followRedirects: Boolean = true,
+    timeoutMs: Int = 20_000,
+): HttpResult
 
 /** Downloads a file (e.g. a post thumbnail). Null on errors. */
 expect suspend fun httpBytes(url: String, userAgent: String, maxBytes: Int = 8_000_000): ByteArray?
 
-const val APP_USER_AGENT = "SothuDiary/2.3 (com.hark.sothudiary; personal property diary app)"
+/**
+ * 2.4.0: an identifying User-Agent WITH a contact URL. Since April 2026 overpass-api.de answers HTTP 406 to clients whose
+ * User-Agent does not identify them with a way to reach the author – the 2.3 value ("SothuDiary/2.3 (com.hark.sothudiary;
+ * personal property diary app)") got 406 on 2026-11-08, which is why every land check on that server failed. Nominatim's
+ * policy asks for the same.
+ */
+const val APP_USER_AGENT = "SothuDiary/2.4 (+https://github.com/harksathya/test; Android property diary)"
 
 // Speech-to-text error codes passed to AudioActions.startSpeech(onError).
 const val SPEECH_PERMISSION = "permission"

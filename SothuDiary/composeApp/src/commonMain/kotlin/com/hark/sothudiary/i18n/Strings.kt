@@ -6,7 +6,7 @@ package com.hark.sothudiary.i18n
  */
 object S {
     // App & navigation
-    val appName = Tr("Sothu Diary", "சொத்து டைரி")
+    val appName = Tr(com.hark.sothudiary.AppName.EN, com.hark.sothudiary.AppName.TA)
     val appTagline = Tr("Your property deal tracker", "உங்கள் சொத்து பேர டைரி")
     val tabProperties = Tr("Properties", "சொத்துகள்")
     val tabBrokers = Tr("Brokers", "தரகர்கள்")
@@ -53,7 +53,7 @@ object S {
     val priceInputHint = Tr("e.g. 4500000, 45L, 45 lakh, 1.2Cr", "எ.கா. 4500000, 45L, 45 லட்சம், 1.2Cr")
     val clearFilters = Tr("Clear filters", "வடிகட்டிகளை அழி")
     val noPropertiesYet = Tr("No properties yet", "இன்னும் சொத்துகள் இல்லை")
-    val noPropertiesBody = Tr("Tap “Add property”, or share a YouTube / Instagram / Facebook post or a poster screenshot to Sothu Diary – the details are filled in for you.", "“சொத்து சேர்” அழுத்துங்கள், அல்லது யூடியூப் / இன்ஸ்டாகிராம் / ஃபேஸ்புக் பதிவையோ விளம்பரப் படத்தையோ சொத்து டைரிக்கு பகிருங்கள் – விவரங்கள் தானாக நிரப்பப்படும்.")
+    val noPropertiesBody = Tr("Tap “Add property”, or share a YouTube / Instagram / Facebook post or a poster screenshot to ${com.hark.sothudiary.AppName.EN} – the details are filled in for you.", "“சொத்து சேர்” அழுத்துங்கள், அல்லது யூடியூப் / இன்ஸ்டாகிராம் / ஃபேஸ்புக் பதிவையோ விளம்பரப் படத்தையோ ${com.hark.sothudiary.AppName.TA}க்கு பகிருங்கள் – விவரங்கள் தானாக நிரப்பப்படும்.")
     val noMatches = Tr("No matching properties", "பொருந்தும் சொத்துகள் இல்லை")
     val noMatchesBody = Tr("Try a different search or clear the filters.", "வேறு தேடலை முயற்சிக்கவும் அல்லது வடிகட்டிகளை அழிக்கவும்.")
     val priceOnRequest = Tr("Price not set", "விலை குறிப்பிடவில்லை")
@@ -230,7 +230,7 @@ object S {
     val importQ = Tr("Replace all data?", "எல்லா தகவலையும் மாற்றவா?")
     val importBody = Tr("Importing a backup replaces everything currently in the app.", "காப்புப் பிரதியை இறக்குமதி செய்தால் தற்போதைய தகவல் அனைத்தும் மாற்றப்படும்.")
     val importDone = Tr("Backup imported", "காப்புப் பிரதி இறக்குமதி ஆனது")
-    val importFailed = Tr("That file is not a Sothu Diary backup", "இது சொத்து டைரி காப்புப் பிரதி அல்ல")
+    val importFailed = Tr("That file is not a ${com.hark.sothudiary.AppName.EN} backup", "இது ${com.hark.sothudiary.AppName.TA} காப்புப் பிரதி அல்ல")
     val howPriceCheckWorks = Tr("How the price check works", "விலைச் சரிபார்ப்பு எப்படி?")
     val priceRulesText = Tr(
         "The price check is a live lookup for each property’s own map location and type – the app has no built-in price list and is not tied to any town. Google Gemini (your free key) searches the web for same-type asking prices and guideline values; every result is placed on the map and only those within 5 km are used, widening (with a warning) to a hard maximum of 10 km when fewer than 3 are found. Nothing beyond 10 km and no other property type is ever used. Your own saved properties of the same type within 10 km are included. Results are kept for 30 days (Refresh any time). If nothing qualifies you see “Not enough data within 10 km” and no verdict.\nPlots / land are compared per cent (and sq ft), farmland per acre, houses and apartments per sq ft. The median gives the market rate; the ranges give the fair range. The government guideline value (your entry, or one found nearby) is the floor.\n• Below guideline value or under 70% of market → Suspiciously low\n• 70–85% → Good price\n• Within ±15% or inside the fair range → Fair\n• Up to 40% above → High\n• Over 40% above → Too high\nMarket figures are asking prices from listings, not registered sale prices.",
@@ -273,7 +273,7 @@ object S {
     val pipeline = Tr("Deal pipeline", "பேர நிலைகள்")
     val recentlyAdded = Tr("Recently added", "சமீபத்தில் சேர்த்தவை")
     val recentActivity = Tr("Recent calls & visits", "சமீபத்திய அழைப்புகள் & பார்வைகள்")
-    val welcomeTitle = Tr("Welcome to Sothu Diary", "சொத்து டைரிக்கு வரவேற்கிறோம்")
+    val welcomeTitle = Tr("Welcome to ${com.hark.sothudiary.AppName.EN}", "${com.hark.sothudiary.AppName.TA}க்கு வரவேற்கிறோம்")
     val welcomeBody = Tr("Keep every land, plot and house lead in one place and know if the price is right.", "ஒவ்வொரு நிலம், மனை, வீடு விளம்பரத்தையும் ஒரே இடத்தில் வைத்து, விலை சரியா என்று தெரிந்துகொள்ளுங்கள்.")
     val welcomeStep1 = Tr("Share a YouTube / Instagram / Facebook post or poster to the app", "யூடியூப் / இன்ஸ்டாகிராம் / ஃபேஸ்புக் பதிவையோ விளம்பரப் படத்தையோ ஆப்புக்குப் பகிருங்கள்")
     val welcomeStep2 = Tr("Pin the exact spot on the map", "வரைபடத்தில் சரியான இடத்தைக் குறியுங்கள்")
@@ -439,7 +439,7 @@ object S {
     val deleteFolderBody = Tr("The properties stay – only the folder is removed.", "சொத்துகள் இருக்கும் – கோப்புறை மட்டும் நீக்கப்படும்.")
     val folderEmpty = Tr("Nothing here yet", "இங்கே இன்னும் எதுவும் இல்லை")
     val folderEmptyBody = Tr("Tap “Add properties”, or add a property to this folder from its detail screen.", "“சொத்துகளைச் சேர்” அழுத்துங்கள், அல்லது சொத்தின் விவரத் திரையிலிருந்து இந்தக் கோப்புறைக்குச் சேருங்கள்.")
-    val sourceEmptyBody = Tr("Share a post from this app to Sothu Diary and it will appear here.", "இந்த ஆப்பிலிருந்து ஒரு பதிவை சொத்து டைரிக்குப் பகிர்ந்தால் இங்கே தோன்றும்.")
+    val sourceEmptyBody = Tr("Share a post from this app to ${com.hark.sothudiary.AppName.EN} and it will appear here.", "இந்த ஆப்பிலிருந்து ஒரு பதிவை ${com.hark.sothudiary.AppName.TA}க்குப் பகிர்ந்தால் இங்கே தோன்றும்.")
 
     // ---- v2.1: location search ----
     val searching = Tr("Searching…", "தேடுகிறது…")
@@ -510,7 +510,7 @@ object S {
     val saved = Tr("Saved", "சேமிக்கப்பட்டது")
     val onlineRatesSaved = Tr("Saved live lookups: {0} places, {1} rates", "சேமித்த நேரடித் தேடல்கள்: {0} இடங்கள், {1} விலைகள்")
     val clearOnlineRates = Tr("Clear saved lookups", "சேமித்த தேடல்களை அழி")
-    val backupSubject = Tr("Sothu Diary backup", "சொத்து டைரி காப்புப்பிரதி")
+    val backupSubject = Tr("${com.hark.sothudiary.AppName.EN} backup", "${com.hark.sothudiary.AppName.TA} காப்புப்பிரதி")
 
     // ---- v2.1: live price check ----
     val setUpLiveCheck = Tr("Set up the live price check", "நேரடி விலை சரிபார்ப்பை அமையுங்கள்")
@@ -766,14 +766,14 @@ object S {
     // share
     val share = Tr("Share", "பகிர்")
     val shareTitle = Tr("Share this property", "இந்தச் சொத்தைப் பகிருங்கள்")
-    val shareBody = Tr("Sends a WhatsApp-friendly message with a link. If the other person has Sothu Diary, the link opens this property in their app (they choose to add it); if not, the link offers the app download.", "இணைப்புடன் WhatsApp-க்கு ஏற்ற செய்தியை அனுப்பும். மற்றவரிடம் சொத்து டைரி இருந்தால், இணைப்பு இந்தச் சொத்தை அவர்கள் செயலியில் திறக்கும் (சேர்ப்பதை அவர்களே முடிவு செய்வர்); இல்லையெனில் செயலியைப் பதிவிறக்க வழி காட்டும்.")
+    val shareBody = Tr("Sends a WhatsApp-friendly message with a link. If the other person has ${com.hark.sothudiary.AppName.EN}, the link opens this property in their app (they choose to add it); if not, the link offers the app download.", "இணைப்புடன் WhatsApp-க்கு ஏற்ற செய்தியை அனுப்பும். மற்றவரிடம் ${com.hark.sothudiary.AppName.TA} இருந்தால், இணைப்பு இந்தச் சொத்தை அவர்கள் செயலியில் திறக்கும் (சேர்ப்பதை அவர்களே முடிவு செய்வர்); இல்லையெனில் செயலியைப் பதிவிறக்க வழி காட்டும்.")
     val shareIncludeNotes = Tr("Include my notes", "என் குறிப்புகளைச் சேர்")
     val shareIncludeLand = Tr("Include the land check", "நில ஆய்வைச் சேர்")
     val shareIncludeBroker = Tr("Include the broker's name & phone", "தரகர் பெயர் & எண்ணைச் சேர்")
     val shareYourName = Tr("Your name (optional)", "உங்கள் பெயர் (விருப்பத்திற்குரியது)")
     val shareSend = Tr("Share (WhatsApp …)", "பகிர் (WhatsApp …)")
     val shareCopyLink = Tr("Copy link", "இணைப்பை நகலெடு")
-    val shareIntro = Tr("Open it in the Sothu Diary app:", "சொத்து டைரி செயலியில் திறக்க:")
+    val shareIntro = Tr("Open it in the ${com.hark.sothudiary.AppName.EN} app:", "${com.hark.sothudiary.AppName.TA} செயலியில் திறக்க:")
     val shareOpenHint = Tr("(No app yet? The link shows the free download.)", "(செயலி இல்லையா? இணைப்பில் இலவசப் பதிவிறக்கம் உள்ளது.)")
     val shareLinkSize = Tr("Link: {0} characters", "இணைப்பு: {0} எழுத்துகள்")
     val importTitle = Tr("Shared property", "பகிரப்பட்ட சொத்து")

@@ -83,6 +83,9 @@ class DesktopPlatform : PlatformActions {
         onResult(if (dir != null && name != null) runCatching { File(dir, name).readText() }.getOrNull() else null)
     }
     override fun toast(message: String) = println(message)
+
+    override fun bundledText(name: String): String? =
+        runCatching { DesktopPlatform::class.java.getResourceAsStream("/$name.txt")?.use { it.readBytes().decodeToString() } }.getOrNull()
     private fun copy(text: String) {
         runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null) }
     }
@@ -93,7 +96,7 @@ fun main() {
     application {
     Window(
         onCloseRequest = ::exitApplication,
-        title = "Sothu Diary – சொத்து டைரி",
+        title = AppName.EN + " – " + AppName.TA,
         state = rememberWindowState(width = 1200.dp, height = 800.dp),
     ) {
         App(repo = repo, platform = DesktopPlatform())

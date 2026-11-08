@@ -129,6 +129,8 @@ fun mergeShared(existing: Property?, incoming: Property, mode: ImportMode, now: 
             imageUrl = incoming.imageUrl.ifBlank { existing.imageUrl },
             boundary = incoming.boundary.ifEmpty { existing.boundary },
             surveyNumber = incoming.surveyNumber.ifBlank { existing.surveyNumber },
+            // 2.4.0: the shared land details travel too (district, taluk, village, SRO, survey / subdivision, patta).
+            land = if (incoming.land.isEmpty) existing.land else incoming.land.copy(autoFilled = emptySet()),
             reviews = if (existing.reviews.isEmpty()) incoming.reviews else existing.reviews,
             notes = if (existing.notes.isBlank()) noteFromSender else existing.notes,
             updatedAt = now, importedAt = now,

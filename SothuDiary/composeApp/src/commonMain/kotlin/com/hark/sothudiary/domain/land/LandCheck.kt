@@ -9,6 +9,7 @@ import com.hark.sothudiary.data.LandCheck
 import com.hark.sothudiary.data.LandFeature
 import com.hark.sothudiary.data.LulcHit
 import com.hark.sothudiary.data.WebSnippet
+import com.hark.sothudiary.data.SourceStatus
 import com.hark.sothudiary.data.Property
 import com.hark.sothudiary.data.nowMillis
 import com.hark.sothudiary.domain.Geocoder
@@ -83,9 +84,19 @@ object LandRules {
     /** Version of the map layers a 2.3.0 check fetches ([com.hark.sothudiary.data.LandCheck.layersVersion]). */
     const val LAYERS_VERSION = 2
     /** Overall time for the map layers, so the screen never waits for minutes. */
-    const val OSM_BUDGET_MS = 40_000L
+    const val OSM_BUDGET_MS = 45_000L
     /** Overall time for the AI part (grounded search, then the free web search fallback). */
-    const val AI_BUDGET_MS = 75_000L
+    const val AI_BUDGET_MS = 60_000L
+    /** 2.4.0: per-source limits for the quick sources (elevation, ISRO Bhuvan) – one slow source never blocks the rest. */
+    const val QUICK_SOURCE_MS = 15_000L
+    /**
+     * 2.4.0 (user decision, 2026-11-08): only sources whose licences openly allow automatic use are loaded by the app –
+     * OpenStreetMap (Overpass, Nominatim; ODbL with attribution) and Open-Meteo. ISRO Bhuvan's terms need NRSC's
+     * written permission for automatic use, and the AI web search reads third-party pages, so neither runs on its own.
+     * The 2.3.0 code for both is kept unchanged behind these switches.
+     */
+    const val AUTO_BHUVAN = false
+    const val AUTO_AI_SEARCH = false
 }
 
 /** Half-width of a river / canal / stream mapped only as a centre line (OSM has no width). */
@@ -330,12 +341,17 @@ fun LandCheck.layerFailed(layer: String): Boolean = layer in osmFailedLayers
 fun lulcWater(c: LandCheck): LulcHit? = c.lulc.firstOrNull { lulcKind(it) == LulcKind.WATER || lulcKind(it) == LulcKind.WETLAND }
 
 fun riskTile(c: LandCheck): TileResult {
-    if (!c.osmOk) return TileResult(LandTile.RISK, LandRating.UNKNOWN, LandReason.NO_MAP_DATA)
-    if (c.layerFailed(OsmLayer.WATER)) {
+    if (!c.osmOk || c.layerFailed(OsmLayer.WATER)) {
         // 2.3.0: the water layer did not load – the ISRO land-use map can still flag a water body at the plot.
+        // 2.4.0: the same when no map data loaded at all, and the elevation can still show low-lying land.
         val w = lulcWater(c)
-        return if (w != null) TileResult(LandTile.RISK, LandRating.POOR, LandReason.LULC_WATER, listOf(lulcLabel(w)))
-        else TileResult(LandTile.RISK, LandRating.UNKNOWN, LandReason.LAYER_FAILED)
+        val low = lowLyingBy(c)
+        return when {
+            w != null -> TileResult(LandTile.RISK, LandRating.POOR, LandReason.LULC_WATER, listOf(lulcLabel(w)))
+            low != null && low >= LandRules.LOW_LYING_M -> TileResult(LandTile.RISK, LandRating.FAIR, LandReason.LOW_LYING, listOf(dec1(low)))
+            !c.osmOk -> TileResult(LandTile.RISK, LandRating.UNKNOWN, LandReason.NO_MAP_DATA)
+            else -> TileResult(LandTile.RISK, LandRating.UNKNOWN, LandReason.LAYER_FAILED)
+        }
     }
     val buf = c.bufferPct ?: 0.0
     val water = c.waterPct ?: 0.0
@@ -654,13 +670,52 @@ fun keepEarlierLayers(c: LandCheck, prev: LandCheck?): LandCheck {
     return out.copy(osmFailedLayers = c.osmFailedLayers - kept.toSet(), osmKeptLayers = kept)
 }
 
+/** 2.4.0: does a saved check have anything to show (map data, elevation, ISRO land use or the AI part)? */
+fun LandCheck.hasAnyData(): Boolean = osmOk || lulc.isNotEmpty() || elevationM != null || ai != null
+
+private fun secs(ms: Long) = if (ms < 1000) "$ms ms" else "${(ms + 500) / 1000} s"
+
+/** Open-Meteo elevation with its status line. */
+private suspend fun elevationWithStatus(points: List<Pair<Double, Double>>): Pair<List<Double>?, SourceStatusLine> {
+    val url = elevationUrl(points)
+    val r = com.hark.sothudiary.httpCall(url, headers = mapOf("User-Agent" to com.hark.sothudiary.APP_USER_AGENT, "Accept" to "application/json"),
+        timeoutMs = LandRules.QUICK_SOURCE_MS.toInt())
+    val v = if (r.ok) parseElevations(r.body)?.takeIf { it.size == points.size } else null
+    val line = SourceStatusLine(
+        "Open-Meteo elevation", v != null,
+        when { v != null -> "pin ${v[0].roundToLong()} m"; r.code < 0 -> r.error ?: "no answer"; r.ok -> "unreadable answer"; else -> "HTTP ${r.code}" },
+        r.ms, "GET api.open-meteo.com/v1/elevation · HTTP ${r.code}" + (r.error?.let { " · $it" } ?: ""),
+    )
+    return v to line
+}
+
+/** ISRO Bhuvan land use with its status line. */
+private suspend fun bhuvanWithStatus(points: List<Pair<Double, Double>>): Pair<List<LulcHit>?, SourceStatusLine> {
+    val (lat, lng) = points.first()
+    if (Bhuvan.layersAt(lat, lng).isEmpty()) return emptyList<LulcHit>() to SourceStatusLine("ISRO Bhuvan land use", null, "outside the Tamil Nadu map coverage")
+    val t0 = nowMillis()
+    // Unchanged 2.3.0 call (see the 2.4.0 report: Bhuvan's terms need NRSC permission for automatic use).
+    val hits = runCatching { Bhuvan.landUse(points) }.getOrNull()
+    val ms = nowMillis() - t0
+    return hits to SourceStatusLine(
+        "ISRO Bhuvan land use", hits != null,
+        when { hits == null -> "no answer"; hits.isEmpty() -> "no land-use class at the pin"; else -> lulcLabel(hits.first()) },
+        ms, "WMS GetFeatureInfo " + Bhuvan.layersAt(lat, lng).joinToString(","),
+    )
+}
+
 /**
- * Runs the land check for [p] (it must have a pin): OpenStreetMap layers (Overpass, 2.3.0: seven small queries raced
- * across the free servers within [LandRules.OSM_BUDGET_MS]), elevation (Open-Meteo), ISRO Bhuvan land use, all in
- * parallel with the grounded AI search (only when a Gemini key is set; 2.3.0: falls back to a free web search).
- * A part that fails keeps what an earlier check found for the same pin ([previous]) and records its error.
+ * Runs the land check for [p] (it must have a pin): OpenStreetMap layers (Overpass, 2.4.0: two combined queries raced
+ * across the free servers within [LandRules.OSM_BUDGET_MS]), elevation (Open-Meteo) and ISRO Bhuvan land use (each
+ * with its own short limit), all in parallel with the grounded AI search (only when a Gemini key is set; falls back to
+ * a free web search). A part that fails keeps what an earlier check found for the same pin ([previous]) and records
+ * its error. 2.4.0: [onPartial] gets the map / elevation / land-use result as soon as those are in – before the slower
+ * AI part – so the screen can show it; every source's outcome is in [LandCheck.status].
  */
-suspend fun runLandCheck(p: Property, apiKey: String, model: String, typeText: String, previous: LandCheck?, now: Long = nowMillis()): LandCheck? {
+suspend fun runLandCheck(
+    p: Property, apiKey: String, model: String, typeText: String, previous: LandCheck?, now: Long = nowMillis(),
+    onPartial: suspend (LandCheck) -> Unit = {},
+): LandCheck? {
     val lat = p.lat ?: return null
     val lng = p.lng ?: return null
     val outline = plotOutline(p)
@@ -671,28 +726,39 @@ suspend fun runLandCheck(p: Property, apiKey: String, model: String, typeText: S
     return coroutineScope {
         val osmJob = async {
             val radius = maxOf(LandRules.WATER_RADIUS_M, (kotlin.math.sqrt(area / PI) + 300).toInt())
-            runCatching { fetchOsmLayers(buildLayerQueries(lat, lng, radius), LandRules.OSM_BUDGET_MS) }
-                .getOrElse { LayeredOsm(emptyList(), emptyList(), OsmLayer.ALL.associateWith { "network" }) }
+            try {
+                fetchOsmLayers(buildLayerQueries(lat, lng, radius), LandRules.OSM_BUDGET_MS)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                LayeredOsm(emptyList(), emptyList(), OsmLayer.ALL.associateWith { "network" },
+                    listOf(SourceStatusLine("Overpass", false, e.message ?: "error")))
+            }
         }
-        val elevJob = async { runCatching { kotlinx.coroutines.withTimeoutOrNull(25_000) { fetchElevations(listOf(lat to lng) + ringPoints(lat, lng)) } }.getOrNull() }
-        val lulcJob = async {
+        val elevJob = async {
+            kotlinx.coroutines.withTimeoutOrNull(LandRules.QUICK_SOURCE_MS + 2_000) { elevationWithStatus(listOf(lat to lng) + ringPoints(lat, lng)) }
+                ?: (null to SourceStatusLine("Open-Meteo elevation", false, "timeout after ${LandRules.QUICK_SOURCE_MS / 1000} s"))
+        }
+        val lulcJob = if (!LandRules.AUTO_BHUVAN) null else async {
             val pts = listOf(lat to lng) + (if (outline?.second == true) plot.take(4).map { it.lat to it.lng } else emptyList())
-            runCatching { kotlinx.coroutines.withTimeoutOrNull(25_000) { Bhuvan.landUse(pts) } }.getOrNull()
+            kotlinx.coroutines.withTimeoutOrNull(LandRules.QUICK_SOURCE_MS + 5_000) { bhuvanWithStatus(pts) }
+                ?: (null to SourceStatusLine("ISRO Bhuvan land use", false, "timeout"))
         }
-        val aiJob = if (apiKey.isBlank()) null else async {
+        val aiJob = if (apiKey.isBlank() || !LandRules.AUTO_AI_SEARCH) null else async {
             val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
-            val hint = listOf(p.locality, p.taluk, p.district).filter { it.isNotBlank() }.joinToString(", ").ifBlank { p.address }
+            val hint = listOf(p.land.village.ifBlank { p.locality }, p.land.taluk.ifBlank { p.taluk }, p.land.district.ifBlank { p.district })
+                .filter { it.isNotBlank() }.distinct().joinToString(", ").ifBlank { p.address }
             val areaText = if (area > 0) "${dec1(sqmToCents(area))} cents (${dec1(sqmToCents(area) / 100)} acres)" else "size not known"
-            runCatching {
-                kotlinx.coroutines.withTimeoutOrNull(LandRules.AI_BUDGET_MS) {
-                    groundedGenerate(apiKey, model, buildLandPrompt(describePlace(rev, hint), lat, lng, areaText, typeText), now, landSearchQueries(rev, hint))
-                } ?: Grounded.Failed("[other] The AI web search took too long.", 0L, "auto")
-            }.getOrNull()
+            val t0 = nowMillis()
+            val g = kotlinx.coroutines.withTimeoutOrNull(LandRules.AI_BUDGET_MS) {
+                groundedGenerate(apiKey, model, buildLandPrompt(describePlace(rev, hint), lat, lng, areaText, typeText), now, landSearchQueries(rev, hint))
+            } ?: Grounded.Failed("[other] The AI web search took too long.", 0L, "auto")
+            g to (nowMillis() - t0)
         }
         val osm = osmJob.await()
-        val elev = elevJob.await()
-        val lulc = lulcJob.await()
-        val ai = aiJob?.await()
+        val (elev, elevLine) = elevJob.await()
+        val (lulc, lulcLine) = lulcJob?.await()
+            ?: (null to SourceStatusLine("ISRO Bhuvan land use", null, "not loaded automatically (licence needs NRSC permission)"))
 
         var c = LandCheck(
             propertyId = p.id, key = key, lat = lat, lng = lng, fetchedAt = now,
@@ -707,28 +773,48 @@ suspend fun runLandCheck(p: Property, apiKey: String, model: String, typeText: S
                 sameSpot,
             )
         } else if (sameSpot != null && sameSpot.osmOk) {
-            sameSpot.copy(fetchedAt = sameSpot.fetchedAt, osmError = osm.error)
+            sameSpot.copy(fetchedAt = sameSpot.fetchedAt, osmError = osm.error, ai = null, aiError = null, status = emptyList())
         } else c.copy(osmOk = false, osmError = osm.error)
         if (elev != null && elev.size == 9) c = c.copy(elevationM = elev[0], surroundingElevationM = medianOf(elev.drop(1)))
         else if (sameSpot != null) c = c.copy(elevationM = sameSpot.elevationM, surroundingElevationM = sameSpot.surroundingElevationM)
         c = when {
             lulc != null -> c.copy(lulc = lulc, lulcError = null)
+            lulcJob == null -> c.copy(lulc = emptyList(), lulcError = null)
             sameSpot != null && sameSpot.lulc.isNotEmpty() -> c.copy(lulc = sameSpot.lulc, lulcError = "network")
             else -> c.copy(lulcError = "network")
         }
+        val mapLines = osm.attempts.map { it.toStatus() } + elevLine.toStatus() + lulcLine.toStatus()
+        val aiPending = SourceStatusLine("AI web search (Gemini)", null, when {
+            aiJob != null -> "working…"
+            !LandRules.AUTO_AI_SEARCH -> "not run automatically (reads third-party pages)"
+            else -> "skipped – no Gemini key (optional)"
+        }).toStatus()
+        // Keep the earlier AI part while the new one is running.
+        c = c.copy(ai = sameSpot?.ai, aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty(), aiModel = sameSpot?.aiModel.orEmpty(),
+            status = mapLines + aiPending)
+        if (aiJob != null) runCatching { onPartial(c) }
+
+        val aiRes = aiJob?.await()
+        val ai = aiRes?.first
+        val aiMs = aiRes?.second ?: 0L
         c = when (ai) {
-            null -> if (apiKey.isBlank()) c.copy(ai = sameSpot?.ai, aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty())
-            else c.copy(ai = sameSpot?.ai, aiError = "network", aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty())
+            null -> c
             is Grounded.Ok -> {
                 val parsed = parseLandAi(ai.text)?.let { if (ai.viaSearch) onlyCitedResults(it, ai.hits) else it }
-                if (parsed == null) c.copy(ai = sameSpot?.ai, aiError = "[other] The AI reply had no readable result.", aiModel = ai.model, aiFetchedAt = sameSpot?.aiFetchedAt ?: 0,
-                    sources = sameSpot?.sources.orEmpty(), webSnippets = if (ai.viaSearch) ai.hits.take(8) else emptyList())
+                if (parsed == null) c.copy(aiError = "[other] The AI reply had no readable result.", aiModel = ai.model,
+                    webSnippets = if (ai.viaSearch) ai.hits.take(8) else emptyList())
                 else c.copy(ai = parsed, aiModel = ai.model, aiFetchedAt = now, sources = ai.sources.take(12), aiViaSearch = ai.viaSearch)
             }
-            is Grounded.Failed -> c.copy(ai = sameSpot?.ai, aiError = ai.error, aiRetryAt = ai.retryAt, aiModel = ai.model,
-                aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty(), webSnippets = ai.snippets.take(8))
+            is Grounded.Failed -> c.copy(aiError = ai.error, aiRetryAt = ai.retryAt, aiModel = ai.model, webSnippets = ai.snippets.take(8))
         }
-        c
+        val aiLine = when (ai) {
+            null -> aiPending
+            is Grounded.Ok -> SourceStatusLine("AI web search (${ai.model})", c.aiError == null,
+                if (c.aiError == null) "${c.sources.size} sources" else "reply had no readable result", aiMs).toStatus()
+            is Grounded.Failed -> SourceStatusLine("AI web search (Gemini)", false,
+                com.hark.sothudiary.domain.pricing.shortAiError(ai.error), aiMs, ai.error.take(300)).toStatus()
+        }
+        c.copy(status = mapLines + aiLine)
     }
 }
 

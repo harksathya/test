@@ -55,19 +55,33 @@ kotlin {
     }
 }
 
+// 2.4.0: the app's display name lives in one place, AppName.kt (both languages). Its two values are read here and
+// written as Android string resources (launcher label + share target), so a rename is a one-line change there.
+val appNameFile = file("src/commonMain/kotlin/com/hark/sothudiary/AppName.kt")
+fun appNameValue(key: String): String =
+    Regex("""const val $key = "([^"]*)"""").find(appNameFile.readText())?.groupValues?.get(1) ?: "Sothu Diary"
+val appNameResDir = layout.buildDirectory.dir("generated/appname/res").get().asFile
+fun xmlEscape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace("'", "\\'")
+listOf("values" to appNameValue("EN"), "values-ta" to appNameValue("TA")).forEach { (dir, name) ->
+    val f = File(appNameResDir, "$dir/app_name.xml")
+    f.parentFile.mkdirs()
+    val share = if (dir == "values") "Add to $name" else "சேர் – $name"
+    f.writeText("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n    <string name=\"app_name\">${xmlEscape(name)}</string>\n    <string name=\"share_label\">${xmlEscape(share)}</string>\n</resources>\n")
+}
+
 android {
     namespace = "com.hark.sothudiary"
     compileSdk = 34
 
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
-    sourceSets["main"].res.srcDirs("src/androidMain/res")
+    sourceSets["main"].res.srcDirs("src/androidMain/res", appNameResDir)
 
     defaultConfig {
         applicationId = "com.hark.sothudiary"
         minSdk = 24
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.3.1"
+        versionCode = 10
+        versionName = "2.4.0"
         // Phones are ARM; dropping x86 keeps ML Kit's native OCR libraries out of the APK for emulators only.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -115,7 +129,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "SothuDiary"
-            packageVersion = "2.3.0"
+            packageVersion = "2.4.0"
         }
     }
 }

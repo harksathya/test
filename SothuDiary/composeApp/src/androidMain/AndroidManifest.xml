@@ -79,6 +79,51 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="sothudiary" android:host="p" />
             </intent-filter>
+            <!-- 2.4.0: a .sothu property file opened from WhatsApp / Files / Downloads. Registered ONLY for the app's own
+                 mime type (WhatsApp keeps the sender's type on documents) and for paths ending in .sothu – never for
+                 generic application/octet-stream or application/json, so the app is not offered for every download.
+                 A file manager that hands over an opaque content:// URI with a generic type may need "Open with" /
+                 sharing the file into the app. Anything that is not a Sothu Diary property is refused with a message. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/vnd.sothudiary+json" />
+            </intent-filter>
+            <!-- .sothu by file name (pathPattern needs scheme + host; the extra patterns cover dots earlier in the path). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.sothu" />
+                <data android:pathPattern=".*\\..*\\.sothu" />
+                <data android:pathPattern=".*\\..*\\..*\\.sothu" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.sothu" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.sothu" />
+                <data android:pathPattern=".*\\..*\\.sothu" />
+            </intent-filter>
+            <!-- Sharing a .sothu file INTO the app (WhatsApp › Share › Sothu Diary). Share-sheet only (the user picks the
+                 app explicitly); octet-stream is kept here because WhatsApp re-types unknown received documents that way.
+                 Non-Sothu files are refused with a message. -->
+            <intent-filter android:label="@string/share_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.sothudiary+json" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
             <!-- 2.3.0: the https share page. App Links verification would need /.well-known/assetlinks.json at the
                  root of harksathya.github.io (a separate user-site repo), so this link is not auto-verified: it opens
                  the page (which hands over to the app) unless "Open supported links" is turned on for the app. -->
@@ -89,6 +134,17 @@
                 <data android:scheme="https" android:host="harksathya.github.io" android:pathPrefix="/test/p" />
             </intent-filter>
         </activity>
+
+        <!-- 2.4.0: share card images and .sothu property files for the share sheet -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.share"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_paths" />
+        </provider>
 
         <!-- Daily 9 AM follow-up reminder; rescheduled after reboot / app update -->
         <receiver

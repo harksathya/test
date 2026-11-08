@@ -124,6 +124,16 @@ import com.hark.sothudiary.domain.social.secondSlide
 import com.hark.sothudiary.domain.smartTitle
 import com.hark.sothudiary.domain.BROWSER_USER_AGENT
 import com.hark.sothudiary.httpBytes
+import com.hark.sothudiary.i18n.S4
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material.icons.filled.Notes
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import com.hark.sothudiary.ui.theme.adviceColor
+import com.hark.sothudiary.ui.theme.statusColor
+import com.hark.sothudiary.ui.components.reasonText
+import com.hark.sothudiary.domain.pricing.keyDocs
 
 const val TN_REGINET_URL = "https://tnreginet.gov.in/portal/"
 
@@ -144,50 +154,16 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
     val now = nowMillis()
     // 2.2.0: a land check made for the current pin / outline adds its water-risk reason; without one nothing changes.
     val worth = worthIt(p, check, data, checks, now, land = currentLandAssessment(ctx, p)?.second)
+    val score = scoreFor(ctx, p, check)
     val broker = p.brokerId?.let { bid -> data.brokers.firstOrNull { it.id == bid } }
     val timeline = data.interactions.filter { it.propertyId == p.id }.sortedByDescending { it.at }
     var confirmDelete by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    var findingOnline by remember(p.id) { mutableStateOf(false) }
-    var onlineMessage by remember(p.id) { mutableStateOf<String?>(null) }
-    var askGeminiKey by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
     var loadingReviews by remember(p.id) { mutableStateOf(false) }
     var readerOpen by remember { mutableStateOf(false) }
+    var showReasons by remember { mutableStateOf(false) }
     val msgNoReviews = S.noReviewsFound.of(lang)
-
-    val pLat = p.lat
-    val pLng = p.lng
-    val group = p.type.group()
-    val latest = if (pLat != null && pLng != null) latestLookup(data, pLat, pLng, group) else null
-
-    /** Live price lookup for this property's own coordinates and type (cached for 30 days). */
-    fun runLookup(force: Boolean) {
-        val key = data.settings.geminiApiKey
-        if (key.isBlank()) { if (force) askGeminiKey = true; return }
-        if (pLat == null || pLng == null) { onlineMessage = S.rsNoPin.of(lang); return }
-        if (!force && freshLookup(data, pLat, pLng, group) != null) return
-        if (findingOnline) return
-        findingOnline = true
-        onlineMessage = null
-        scope.launch {
-            val hint = listOf(p.locality, p.taluk, p.district).filter { it.isNotBlank() }.joinToString(", ").ifBlank { p.address }
-            val r = runCatching { liveLookup(key, data.settings.geminiModel, pLat, pLng, group, hint) }.getOrNull()
-            if (r != null) ctx.repo.saveLookup(r.lookup, r.rates)
-            onlineMessage = when {
-                r == null -> S.onlineError.format(lang, "network")
-                r.error == "no_key" -> S.geminiNeedKey.of(lang)
-                // Shown once, by the friendly error note (from the saved lookup), not here as well.
-                r.error != null -> null
-                r.rates.isEmpty() -> S.onlineNone.format(lang, r.lookup.skipped)
-                else -> S.onlineSaved.format(lang, r.rates.size, r.lookup.skipped)
-            }
-            findingOnline = false
-        }
-    }
-
-    // Price check is a live lookup: run it when there is no recent one for this place + type.
-    LaunchedEffect(p.id, pLat, pLng, group, data.settings.geminiApiKey) { runLookup(force = false) }
 
     fun refreshReviews() {
         if (p.sourceUrl.isBlank()) return
@@ -206,7 +182,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 onToggleLang = ctx.toggleLang,
                 onBack = { ctx.nav.pop() },
                 actions = {
-                    // 2.3.0: share the property as a WhatsApp-friendly link.
+                    // 2.4.0: share sheet (text + link, image card, app file).
                     IconButton(onClick = { sharing = true }) { Icon(Icons.Filled.Share, contentDescription = S.share.s()) }
                     IconButton(onClick = { ctx.nav.push(Route.PropertyEdit(p.id)) }) { Icon(Icons.Filled.Edit, contentDescription = S.edit.s()) }
                     IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, contentDescription = S.delete.s()) }
@@ -228,9 +204,9 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // ---- Hero photo ----
+            // ================= Top: photo, title, price, verdict, score =================
             val image = propertyImageModel(ctx.platform, p)
-            PropertyImage(image, p.type, Modifier.fillMaxWidth().height(if (ctx.wide) 240.dp else 210.dp).clip(RoundedCornerShape(20.dp))) {
+            PropertyImage(image, p.type, Modifier.fillMaxWidth().height(if (ctx.wide) 230.dp else 190.dp).clip(RoundedCornerShape(20.dp))) {
                 if (image != null) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))))
                 Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (p.sourceUrl.isNotBlank()) {
@@ -238,18 +214,14 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                             SourceLogo(p.sourcePlatform, 18.dp); Spacer(Modifier.width(6.dp)); Text(S.openPost.s())
                         }
                     }
-                    FilledTonalButton(onClick = {
+                    FilledTonalIconButton(onClick = {
                         ctx.platform.pickImage { name ->
                             if (name != null) {
                                 if (p.imageFile.isNotBlank()) ctx.platform.deleteImage(p.imageFile)
-                    p.photos.forEach { ctx.platform.deleteImage(it) }
                                 ctx.repo.setPropertyImage(p.id, name, null)
                             }
                         }
-                    }) {
-                        Icon(Icons.Filled.AddAPhoto, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-                        Text(if (p.imageFile.isBlank()) S.addPhoto.s() else S.changePhoto.s())
-                    }
+                    }) { Icon(Icons.Filled.AddAPhoto, contentDescription = if (p.imageFile.isBlank()) S.addPhoto.s() else S.changePhoto.s()) }
                 }
                 Text(
                     if (p.askingPrice > 0) priceShort(p.askingPrice, lang) else S.priceOnRequest.s(),
@@ -257,99 +229,78 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                     modifier = Modifier.align(Alignment.BottomStart).padding(14.dp),
                 )
             }
-
-            // ---- Extra photos from the post (e.g. the second carousel slide); tap one to make it the cover ----
             if (p.photos.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (listOfNotNull(p.imageFile.ifBlank { null }) + p.photos).forEach { f ->
                         PropertyImage(ctx.platform.imagePath(f), p.type,
-                            Modifier.size(56.dp).clip(RoundedCornerShape(12.dp))
+                            Modifier.size(52.dp).clip(RoundedCornerShape(12.dp))
                                 .border(if (f == p.imageFile) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
                                 .clickable { ctx.repo.makeCover(p.id, f) })
                     }
                 }
             }
 
-            // ---- Header ----
             SectionCard {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Pill(p.type.tr().s(), MaterialTheme.colorScheme.primary)
-                    Pill(p.status.tr().s(), statusColor(p.status))
-                    Pill(check.verdict.tr().s(), verdictColor(check.verdict), filled = check.verdict != Verdict.UNKNOWN)
+                Row(verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f)) {
+                        Text(p.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        val where = listOf(p.land.village.ifBlank { p.locality }, p.land.taluk.ifBlank { p.taluk }, p.land.district.ifBlank { p.district })
+                            .filter { it.isNotBlank() }.distinct().joinToString(", ")
+                        if (where.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(where, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(listOf(if (p.size > 0) sizeLine(p) else "", unitPriceLine(p)).filter { it.isNotBlank() }.joinToString("  •  "),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+                            Pill(p.type.tr().s(), MaterialTheme.colorScheme.primary)
+                            Pill(p.status.tr().s(), statusColor(p.status))
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    ScoreBadge(score.total, 50)
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(p.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(p.locationLine().ifBlank { "-" }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                // Verdict: Go / Hold / Drop with its main reason; tap for all reasons.
+                val ac = adviceColor(worth.advice)
+                Row(Modifier.fillMaxWidth().clickable { showReasons = !showReasons }, verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.background(ac, RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 6.dp)) {
+                        Text(worth.advice.tr().s().uppercase(), color = Color.White, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(worth.reasons.firstOrNull()?.let { reasonText(it) } ?: S.suggestionOnly.s(), style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Icon(if (showReasons) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(unitPriceLine(p), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(4.dp))
-                Text(S.sizeLabel.s() + ": " + sizeLine(p), style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    S.addedUpdated.f(formatDate(p.createdAt, lang), formatDate(p.updatedAt, lang)),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (showReasons) {
+                    Column(Modifier.padding(top = 6.dp)) {
+                        worth.reasons.forEach { r ->
+                            Row(Modifier.padding(vertical = 2.dp)) {
+                                Box(Modifier.padding(top = 6.dp).size(7.dp).background(adviceColor(r.severity), RoundedCornerShape(50)))
+                                Spacer(Modifier.width(8.dp))
+                                Text(reasonText(r), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        Text(S.suggestionOnly.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                        ScoreCard(score)
+                    }
+                }
             }
 
-            WorthItCard(worth)
-            PriceCheckCard(
-                p, check,
-                onOpenProperty = { ctx.nav.push(Route.PropertyDetail(it)) },
-                onOpenUrl = { ctx.platform.openUrl(it) },
-                onAreaRates = { ctx.nav.push(Route.AreaRates(p.id, p.type.group())) },
-                onFindOnline = { runLookup(force = true) },
-                findingOnline = findingOnline,
-                onlineMessage = onlineMessage,
-                lookupStatus = latest?.takeIf { it.error == null }?.let { l ->
-                    S.lookupStatus.format(lang, formatDateShort(l.fetchedAt, lang), l.found, l.place.ifBlank { "—" })
-                },
-                lookupError = latest?.takeIf { it.error != null && it.error != "no_key" },
-                latestLookup = latest,
-                needsKey = data.settings.geminiApiKey.isBlank(),
-                onSetupKey = { askGeminiKey = true },
-            )
+            // ================= Checks: three tiles, each opens its own screen =================
+            CheckTilesRow(ctx, p, check)
 
-            // ---- 2.3.1: Government guideline value (TNREGINET) and stamp duty / registration fee ----
-            GuidelineDutyCard(ctx, p)
+            // ================= Below: shared land details and the rest, collapsed =================
+            LandDetailsSection(ctx, p)
 
-            // ---- 2.2.0: Land check (water buffer, roads, locality, utilities, zoning, growth) ----
-            LandCheckCard(ctx, p)
-
-            // ---- User reviews (comments on the source post) ----
-            if (p.sourceUrl.isNotBlank() || p.reviews.isNotEmpty()) {
-                val plat = platformOf(p.sourceUrl)
-                ReviewsSection(
-                    reviews = p.reviews,
-                    loading = loadingReviews,
-                    fetchedLabel = if (p.reviewsFetchedAt > 0) S.fetchedOn.f(formatDateShort(p.reviewsFetchedAt, lang)) else null,
-                    onRefresh = if (plat == SourcePlatform.YOUTUBE || plat == SourcePlatform.INSTAGRAM) ({ refreshReviews() }) else null,
-                    onReadInApp = if ((plat == SourcePlatform.INSTAGRAM || plat == SourcePlatform.FACEBOOK) && ctx.platform.hasWebReader) ({ readerOpen = true }) else null,
-                )
-            }
-
-            // ---- Folders ----
-            SectionCard(title = S.folders.s(), icon = Icons.Filled.Folder) {
-                FolderChips(ctx, p)
-            }
-
-            // ---- Status pipeline ----
-            SectionCard(title = S.status.s()) {
-                ChoiceChips(DealStatus.entries, p.status, { it.tr().s() }) { ctx.repo.setStatus(p.id, it) }
-            }
-
-            // ---- Broker ----
-            SectionCard(title = S.broker.s()) {
+            CollapsibleSection(S4.brokerCalls.s(), Icons.Filled.Person,
+                listOfNotNull(broker?.name, if (timeline.isNotEmpty()) S.nResults.f(timeline.size) else null).joinToString(" · ")) {
                 if (broker == null) {
                     Text(S.noBrokerLinked.s(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = { ctx.nav.push(Route.PropertyEdit(p.id)) }) { Text(S.linkBroker.s()) }
                 } else {
-                    Row(
-                        Modifier.fillMaxWidth().clickable { ctx.nav.push(Route.BrokerDetail(broker.id)) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                    Row(Modifier.fillMaxWidth().clickable { ctx.nav.push(Route.BrokerDetail(broker.id)) }, verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
                             Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         }
@@ -372,41 +323,51 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                         }
                     }
                 }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(S.timeline.s(), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { ctx.nav.push(Route.InteractionEdit(null, p.id, p.brokerId)) }) { Text(S.add.s()) }
+                }
+                if (timeline.isEmpty()) Text(S.noInteractions.s(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else InteractionTimeline(ctx, timeline, data, showProperty = false)
             }
 
-            // ---- Source ----
-            SectionCard(title = S.source.s()) {
+            CollapsibleSection(S4.notesSource.s(), Icons.Filled.Notes,
+                listOf(p.sourcePlatform.takeIf { it != SourcePlatform.NONE }?.tr()?.s().orEmpty(), p.notes.take(60)).filter { it.isNotBlank() }.joinToString(" · ")) {
+                if (p.notes.isNotBlank()) { Text(p.notes); Spacer(Modifier.height(8.dp)) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (p.sourcePlatform != SourcePlatform.NONE) { SourceLogo(p.sourcePlatform, 20.dp); Spacer(Modifier.width(8.dp)) }
                     Text(p.sourcePlatform.tr().s(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 }
                 if (p.sourceUrl.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.clickable { ctx.platform.openUrl(p.sourceUrl) }, verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.padding(top = 4.dp).clickable { ctx.platform.openUrl(p.sourceUrl) }, verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(p.sourceUrl, color = MaterialTheme.colorScheme.primary, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                if (p.sourceCaption.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("“" + p.sourceCaption + "”", style = MaterialTheme.typography.bodyMedium)
-                }
+                if (p.sourceCaption.isNotBlank()) Text("“" + p.sourceCaption + "”", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
                 if (p.postClaims.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(S.postClaims.s(), style = MaterialTheme.typography.labelLarge)
+                    Text(S.postClaims.s(), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
                     ClaimChips(p.postClaims)
+                }
+                if (p.sourceUrl.isNotBlank() || p.reviews.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    val plat = platformOf(p.sourceUrl)
+                    ReviewsSection(
+                        reviews = p.reviews,
+                        loading = loadingReviews,
+                        fetchedLabel = if (p.reviewsFetchedAt > 0) S.fetchedOn.f(formatDateShort(p.reviewsFetchedAt, lang)) else null,
+                        onRefresh = if (plat == SourcePlatform.YOUTUBE || plat == SourcePlatform.INSTAGRAM) ({ refreshReviews() }) else null,
+                        onReadInApp = if ((plat == SourcePlatform.INSTAGRAM || plat == SourcePlatform.FACEBOOK) && ctx.platform.hasWebReader) ({ readerOpen = true }) else null,
+                    )
                 }
             }
 
-            // ---- Documents ----
             val required = keyDocs(p.type)
-            SectionCard(title = S.documents.s(), trailing = { Text(S.docsCount.f(p.docs.size, DocItem.entries.size), style = MaterialTheme.typography.labelLarge) }) {
+            CollapsibleSection(S4.docsSection.s(), Icons.Filled.Checklist, S.docsCount.f(p.docs.size, DocItem.entries.size)) {
                 DocItem.entries.forEach { d ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { ctx.repo.toggleDoc(p.id, d) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                    Row(Modifier.fillMaxWidth().clickable { ctx.repo.toggleDoc(p.id, d) }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = d in p.docs, onCheckedChange = { ctx.repo.toggleDoc(p.id, d) })
                         Text(d.tr().s(), modifier = Modifier.weight(1f))
                         if (d in required && d !in p.docs) Pill(S.keyDoc.s(), MaterialTheme.colorScheme.error)
@@ -414,9 +375,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 }
             }
 
-            // ---- Location ----
-            SectionCard(title = S.location.s(), icon = Icons.Filled.LocationOn) {
-                Text(p.locationLine().ifBlank { "-" }, fontWeight = FontWeight.Medium)
+            CollapsibleSection(S4.locationSection.s(), Icons.Filled.Map, p.address.ifBlank { p.locationLine() }) {
                 if (p.address.isNotBlank()) Text(p.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val lat = p.lat
                 val lng = p.lng
@@ -430,6 +389,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                                 centerLat = lat, centerLng = lng, zoom = 15.0, cameraKey = lat to lng,
                             )
                         }
+                        Text(S4.osmCredit.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(S.coordinates.s() + ": " + dec(lat, 5) + ", " + dec(lng, 5), style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
@@ -442,19 +402,14 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                 }
             }
 
-            if (p.notes.isNotBlank()) {
-                SectionCard(title = S.notes.s()) { Text(p.notes) }
-            }
-
-            // ---- Timeline ----
-            SectionCard(title = S.timeline.s(), trailing = {
-                TextButton(onClick = { ctx.nav.push(Route.InteractionEdit(null, p.id, p.brokerId)) }) { Text(S.add.s()) }
-            }) {
-                if (timeline.isEmpty()) {
-                    Text(S.noInteractions.s(), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    InteractionTimeline(ctx, timeline, data, showProperty = false)
-                }
+            CollapsibleSection(S4.moreSection.s(), Icons.Filled.Folder, p.status.tr().s()) {
+                Text(S.status.s(), style = MaterialTheme.typography.labelLarge)
+                ChoiceChips(DealStatus.entries, p.status, { it.tr().s() }) { ctx.repo.setStatus(p.id, it) }
+                Spacer(Modifier.height(8.dp))
+                Text(S.folders.s(), style = MaterialTheme.typography.labelLarge)
+                FolderChips(ctx, p)
+                Text(S.addedUpdated.f(formatDate(p.createdAt, lang), formatDate(p.updatedAt, lang)),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.height(80.dp))
         }
@@ -479,17 +434,6 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
     }
 
     if (sharing) SharePropertyDialog(ctx, p) { sharing = false }
-    if (askGeminiKey) {
-        GeminiKeyDialog(
-            current = data.settings.geminiApiKey,
-            onDismiss = { askGeminiKey = false },
-            onSave = { k ->
-                ctx.repo.setApiKeys(data.settings.youtubeApiKey, k, data.settings.geminiModel)
-                askGeminiKey = false
-            },
-            onOpenStudio = { ctx.platform.openUrl(AI_STUDIO_URL) },
-        )
-    }
 
     if (confirmDelete) {
         AlertDialog(

@@ -83,6 +83,7 @@ import com.hark.sothudiary.domain.rupees
 import com.hark.sothudiary.domain.basis
 import com.hark.sothudiary.i18n.LocalLang
 import com.hark.sothudiary.i18n.S
+import com.hark.sothudiary.i18n.S4
 import com.hark.sothudiary.i18n.Tr
 import com.hark.sothudiary.i18n.f
 import com.hark.sothudiary.i18n.s
@@ -207,6 +208,17 @@ fun GuidelineDutyCard(ctx: AppContext, p: Property) {
 
     if (portalOpen) {
         GuidelinePortalOverlay(
+            propertyId = p.id,
+            onChoices = { d, sro, v ->
+                // What the user picked on the portal goes into the shared land record (and from there everywhere).
+                val cur = ctx.repo.data.properties.firstOrNull { it.id == p.id }
+                if (cur != null) {
+                    val l = cur.land
+                    val n = l.copy(district = d.ifBlank { l.district }, sro = sro.ifBlank { l.sro }, village = v.ifBlank { l.village },
+                        autoFilled = l.autoFilled - setOfNotNull("district".takeIf { d.isNotBlank() }, "village".takeIf { v.isNotBlank() }))
+                    if (n != l) ctx.repo.setLand(p.id, n)
+                }
+            },
             place = gvPlace(p),
             preferredUnit = g?.unit ?: GvUnit.SQFT,
             onSave = { og -> ctx.repo.setRegistry(p.id, ctx.repo.data.properties.firstOrNull { it.id == p.id }?.registry?.copy(guideline = og) ?: reg.copy(guideline = og)); portalOpen = false; ctx.platform.toast(S.gvSaved.of(lang)) },
@@ -221,17 +233,8 @@ fun GuidelineDutyCard(ctx: AppContext, p: Property) {
             onDismiss = { editValue = false },
         )
     }
-    if (editPlace) {
-        GuidelinePlaceDialog(
-            reg = reg.withPlace(place), survey = p.surveyNumber,
-            onSave = { r, survey ->
-                ctx.repo.setRegistry(p.id, r)
-                if (survey.trim() != p.surveyNumber) ctx.repo.setSurveyNumber(p.id, survey)
-                editPlace = false
-            },
-            onDismiss = { editPlace = false },
-        )
-    }
+    // 2.4.0: the place is the shared Land details record (one editor for the whole app).
+    if (editPlace) LandDetailsDialog(ctx, p) { editPlace = false }
     if (editRates) DutyRatesDialog(ctx) { editRates = false }
 }
 
@@ -357,6 +360,13 @@ private fun GuidelinePlaceDialog(reg: RegistryInfo, survey: String, onSave: (Reg
 
 // ---------------------------------------------------------------- in-app TNREGINET page
 
+/** A district name read off the (Tamil or English) portal list, in English for the land record. */
+private fun englishDistrict(name: String): String {
+    val t = name.trim()
+    if (t.isBlank()) return ""
+    return com.hark.sothudiary.domain.registry.TN_DISTRICTS.entries.firstOrNull { (en, others) -> en.equals(t, true) || others.any { it == t } }?.key ?: t
+}
+
 private fun parseCapture(json: String?): Pair<List<String>, String> {
     val o = runCatching { json?.let { Json.parseToJsonElement(it) as? JsonObject } }.getOrNull() ?: return emptyList<String>() to ""
     val sel = (o["sel"] as? JsonPrimitive)?.contentOrNull.orEmpty()
@@ -370,7 +380,10 @@ private fun parseCapture(json: String?): Pair<List<String>, String> {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun GuidelinePortalOverlay(place: GvPlace, preferredUnit: GvUnit, onSave: (OfficialGuideline) -> Unit, onDismiss: () -> Unit) {
+fun GuidelinePortalOverlay(
+    place: GvPlace, preferredUnit: GvUnit, onSave: (OfficialGuideline) -> Unit, onDismiss: () -> Unit,
+    propertyId: String = "", onChoices: (String, String, String) -> Unit = { _, _, _ -> },
+) {
     FullScreenOverlay {
         PlatformBackHandler(enabled = true) { onDismiss() }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -390,11 +403,27 @@ fun GuidelinePortalOverlay(place: GvPlace, preferredUnit: GvUnit, onSave: (Offic
             var effective by remember { mutableStateOf("") }
             var picked by remember { mutableStateOf<String?>(null) }
 
+            // 2.4.0: Status / நிலை lines for this page session.
+            var pageLine by remember { mutableStateOf(com.hark.sothudiary.data.SourceStatus("TNREGINET page", null, "loading…")) }
+            var formLine by remember { mutableStateOf<com.hark.sothudiary.data.SourceStatus?>(null) }
+            var stepDone by remember { mutableStateOf(false) }
+            var lastChoices by remember { mutableStateOf(Triple("", "", "")) }
+            LaunchedEffect(pageLine, formLine) { if (propertyId.isNotBlank()) GvSession.set(propertyId, listOfNotNull(pageLine, formLine)) }
+
             fun runPrefill() { script = prefill; prefillRuns = 0; tick++ }
             // After each page load, fill the form (the lists load one after another, so the script runs a few times).
             LaunchedEffect(loads) { if (loads > 0) { delay(1500); runPrefill() } }
             // The next list is loading by AJAX: try the next step a moment later.
             LaunchedEffect(retry) { if (retry > 0) { delay(1200); if (script == prefill) tick++ } }
+            // 2.4.0: keep watching while the form is not complete – when the user picks an SRO / village on the page, the
+            // next step is filled, and their choices are saved to the land record (every 2.5 s, at most 4 minutes).
+            LaunchedEffect(loads) {
+                if (loads == 0) return@LaunchedEffect
+                repeat(96) {
+                    delay(2500)
+                    if (!stepDone && script == prefill) tick++
+                }
+            }
 
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().background(LocalBrand.current.bar).padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -470,8 +499,36 @@ fun GuidelinePortalOverlay(place: GvPlace, preferredUnit: GvUnit, onSave: (Offic
                         } else {
                             val o = runCatching { json?.let { Json.parseToJsonElement(it) as? JsonObject } }.getOrNull()
                             fun b(k: String) = (o?.get(k) as? JsonPrimitive)?.booleanOrNull == true
+                            fun t(k: String) = (o?.get(k) as? JsonPrimitive)?.contentOrNull.orEmpty()
+                            val step = t("step")
+                            stepDone = step == "done"
+                            // The user's own choices on the page -> the shared land record.
+                            (o?.get("sel") as? JsonObject)?.let { sel ->
+                                fun sv(k: String) = (sel[k] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                                val c = Triple(sv("district"), sv("sro"), sv("village"))
+                                if (c != lastChoices && (c.first.isNotBlank() || c.second.isNotBlank())) {
+                                    lastChoices = c
+                                    onChoices(englishDistrict(c.first), c.second, c.third)
+                                }
+                            }
+                            formLine = when {
+                                o == null -> com.hark.sothudiary.data.SourceStatus(S4.gvStepForm.of(lang), false, "script error")
+                                !b("found") -> com.hark.sothudiary.data.SourceStatus(S4.gvStepForm.of(lang), if (t("ready") == "complete") false else null,
+                                    if (t("ready") == "complete") "not found on this page (ids districtList / SROList / villageList)" else S4.gvStepWaiting.of(lang))
+                                t("miss").isNotBlank() -> {
+                                    val sample = (o["sample"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
+                                    com.hark.sothudiary.data.SourceStatus(S4.gvStepForm.of(lang) + " · " + step, false,
+                                        S4.gvStepNotInList.format(lang, t("miss"), t("options"), sample.take(3).joinToString(", ")), detail = "options: " + sample.joinToString(", "))
+                                }
+                                b("waiting") -> com.hark.sothudiary.data.SourceStatus(S4.gvStepForm.of(lang) + " · " + step, null, S4.gvStepWaiting.of(lang))
+                                else -> com.hark.sothudiary.data.SourceStatus(S4.gvStepForm.of(lang), true, listOfNotNull(
+                                    S.gvDistrict.of(lang).takeIf { b("district") }, S.gvSro.of(lang).takeIf { b("sro") },
+                                    S.gvVillage.of(lang).takeIf { b("village") }).joinToString(", ") + if (stepDone) " ✓" else "")
+                            }
                             if (o == null || !b("found")) {
                                 if (prefillRuns >= 1) status = S.gvFormNotFound.of(lang)
+                                // 2.4.0: the page may still be building the form: try again (before: gave up after one try).
+                                if (prefillRuns < 6) { prefillRuns++; retry++ }
                             } else {
                                 val done = listOfNotNull(
                                     S.gvDistrict.of(lang).takeIf { b("district") }, S.gvSro.of(lang).takeIf { b("sro") },
@@ -480,11 +537,11 @@ fun GuidelinePortalOverlay(place: GvPlace, preferredUnit: GvUnit, onSave: (Offic
                                 status = if (done.isEmpty()) null else S.gvFormFilled.format(lang, done.joinToString(", "))
                             }
                             // The next list loads by AJAX: run again while a step is still waiting (at most 8 times).
-                            if (b("waiting") && prefillRuns < 8) { prefillRuns++; retry++ }
-                            else if (o == null && prefillRuns < 2) { prefillRuns++; retry++ }
+                            if (o != null && b("found") && b("waiting") && prefillRuns < 8) { prefillRuns++; retry++ }
                         }
                     },
-                    onPageLoaded = { u -> pageUrl = u; loads++ },
+                    onPageLoaded = { u -> pageUrl = u; loads++; if (pageLine.ok != false) pageLine = com.hark.sothudiary.data.SourceStatus(S4.gvStepPage.of(lang), true, "loaded", detail = u) },
+                    onPageError = { e -> pageLine = com.hark.sothudiary.data.SourceStatus(S4.gvStepPage.of(lang), false, e, detail = pageUrl) },
                     onProgress = { progress = it },
                 )
             }
