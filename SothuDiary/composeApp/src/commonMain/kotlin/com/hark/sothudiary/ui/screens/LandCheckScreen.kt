@@ -1,5 +1,6 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.domain.ai.llm
 import com.hark.sothudiary.domain.ai.hasAiKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -187,8 +188,9 @@ fun tileReason(t: TileResult, lang: Lang): String {
         }
         LandReason.NO_UTILITIES -> S.lrNoUtilities.of(lang)
         LandReason.GROWTH_AI -> arg(0).ifBlank { S.aiEstimateTag.of(lang) }
-        LandReason.GROWTH_NO_KEY -> S.lrGrowthNoKey.of(lang)
+        LandReason.GROWTH_NO_KEY -> com.hark.sothudiary.i18n.S6.lrGrowthNoKey.of(lang)
         LandReason.GROWTH_UNKNOWN -> S.lrGrowthUnknown.of(lang)
+        LandReason.GROWTH_NOT_RUN -> com.hark.sothudiary.i18n.S6.lrGrowthNotRun.of(lang)
         LandReason.NO_MAP_DATA -> S.lrNoMapData.of(lang)
         LandReason.RAIL_NOC -> S.lrRailNoc.format(lang, arg(0))
         LandReason.RAIL_NEAR -> S.lrRailNear.format(lang, arg(0))
@@ -520,13 +522,26 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
                 TileGrid(assessment.allTiles, ctx.wide)
                 Text(S.landCheckedOn.f(formatDateShort(current.fetchedAt, lang)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                // ---- AI part (2.4.0: only shown when an earlier AI result exists or automatic AI search is on) ----
-                if (current.ai != null || com.hark.sothudiary.domain.land.LandRules.AUTO_AI_SEARCH) SectionCard(title = S.zoningTitle.s(), trailing = { Pill(S.aiEstimateTag.s(), Color(0xFF6F5E9A)) }) {
+                // ---- AI part (2.6.0: always shown; the online search runs when the user taps it, with the chosen provider) ----
+                SectionCard(title = S.zoningTitle.s(), trailing = { Pill(S.aiEstimateTag.s(), Color(0xFF6F5E9A)) }) {
                     val ai = current.ai
                     val err = current.aiError
                     if (!hasKey && ai == null) {
-                        Text(S.landAiNeedKey.s(), style = MaterialTheme.typography.bodyMedium)
-                        Button(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text(S.setUpLiveCheck.s()) }
+                        Text(com.hark.sothudiary.i18n.S6.landAiNeedKey.s(), style = MaterialTheme.typography.bodyMedium)
+                        Button(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text(com.hark.sothudiary.i18n.S6.addAiKey.s()) }
+                    }
+                    if (hasKey) {
+                        val aiRunning = com.hark.sothudiary.domain.CheckRunner.isRunning("landai", p.id)
+                        val provider = data.settings.llm().provider.name
+                        Text(com.hark.sothudiary.i18n.S6.aiOnTapNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (current.aiFetchedAt > 0) Text(com.hark.sothudiary.i18n.S6.aiLastRun.f(formatDateShort(current.aiFetchedAt, lang)),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        com.hark.sothudiary.ui.components.FindOnlineButton(
+                            onClick = { com.hark.sothudiary.domain.CheckRunner.landAi(ctx.repo, p, typeText, current) },
+                            busy = aiRunning, prominent = ai == null,
+                            label = com.hark.sothudiary.i18n.S6.aiSearchLand.f(provider),
+                        )
+                        if (aiRunning) Text(com.hark.sothudiary.i18n.S6.aiSearching.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
                     if (ai != null) {
                         val z = ai.zoning.takeIf { it.isNotBlank() && it != "unknown" }
@@ -544,7 +559,7 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
                                 }
                             }
                         }
-                    } else if (hasKey && err == null && !running) {
+                    } else if (hasKey && err == null && !running && current.aiFetchedAt > 0) {
                         Text(S.zoningNone.s(), style = MaterialTheme.typography.bodyMedium)
                     }
                     if (current.aiViaSearch && ai != null) Pill(S.viaSearchTag.s(), MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
@@ -586,7 +601,7 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
                     if (current.lulc.isNotEmpty()) Text("• " + S.srcBhuvan.s(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                     val urls = landSources(current)
                     if (urls.isNotEmpty()) {
-                        Text("• " + (if (current.aiViaSearch) S.srcWebSearch else S.srcAi).s(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                        Text("• " + (if (current.aiViaSearch) com.hark.sothudiary.i18n.S6.srcWebSearch else com.hark.sothudiary.i18n.S6.srcAi).s(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                         urls.take(10).forEach { u ->
                             Row(Modifier.fillMaxWidth().clickable { ctx.platform.openUrl(u) }.padding(start = 10.dp, top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp)); Spacer(Modifier.width(4.dp))

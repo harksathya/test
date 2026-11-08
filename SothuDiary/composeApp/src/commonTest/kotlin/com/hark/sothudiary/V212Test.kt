@@ -58,9 +58,9 @@ class V212Test {
     @Test fun friendlyMessages() {
         val now = 1_000_000L
         val q = taggedError(LookupErrorKind.QUOTA, "You exceeded your current quota")
-        assertTrue(lookupErrorMessage(q, 0, com.hark.sothudiary.data.Lang.EN, now).startsWith("Free Gemini limit reached for now"))
+        assertTrue(lookupErrorMessage(q, 0, com.hark.sothudiary.data.Lang.EN, now).startsWith("The AI service's free limit is used up for now")) // 2.6.0: any provider (issue #1)
         assertTrue("41 seconds" in lookupErrorMessage(q, now + 41_000, com.hark.sothudiary.data.Lang.EN, now))
-        assertTrue("இலவச Gemini" in lookupErrorMessage(q, 0, com.hark.sothudiary.data.Lang.TA, now))
+        assertTrue("இலவச வரம்பு" in lookupErrorMessage(q, 0, com.hark.sothudiary.data.Lang.TA, now))
         assertFalse("exceeded" in lookupErrorMessage(q, 0, com.hark.sothudiary.data.Lang.EN, now)) // raw text only under Details
     }
 

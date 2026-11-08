@@ -40,10 +40,10 @@ fun waitText(ms: Long, lang: Lang): String {
 /** The short friendly message for a stored lookup error, in [lang]. */
 fun lookupErrorMessage(stored: String, retryAt: Long, lang: Lang, now: Long = nowMillis(), otherText: Tr? = null): String {
     val t: Tr = when (classifyLookupError(stored)) {
-        LookupErrorKind.QUOTA -> if (retryAt > now) return S.errQuotaAfter.format(lang, waitText(retryAt - now, lang)) else S.errQuota
-        LookupErrorKind.BAD_KEY -> S.errBadKey
+        LookupErrorKind.QUOTA -> if (retryAt > now) return com.hark.sothudiary.i18n.S6.errQuotaAfter.format(lang, waitText(retryAt - now, lang)) else com.hark.sothudiary.i18n.S6.errQuota
+        LookupErrorKind.BAD_KEY -> com.hark.sothudiary.i18n.S6.errBadKey
         LookupErrorKind.NETWORK -> S.errNetwork
-        LookupErrorKind.MODEL_UNAVAILABLE -> S.errModel
+        LookupErrorKind.MODEL_UNAVAILABLE -> com.hark.sothudiary.i18n.S6.errModel
         LookupErrorKind.NO_KEY -> com.hark.sothudiary.i18n.S5.aiNeedKey
         LookupErrorKind.OTHER -> otherText ?: S.errOther
     }

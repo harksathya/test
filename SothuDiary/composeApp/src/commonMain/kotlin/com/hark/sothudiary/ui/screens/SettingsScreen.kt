@@ -62,7 +62,7 @@ import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.domain.dec
 
-const val APP_VERSION = "2.5.0"
+const val APP_VERSION = "2.6.0"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -217,7 +217,7 @@ fun SettingsScreen(ctx: AppContext) {
             // 2.4.0: weights of the 0–100 property score.
             ScoreWeightsCard(ctx)
             SectionCard(title = S.howPriceCheckWorks.s()) {
-                Text(S.priceRulesText.s(), style = MaterialTheme.typography.bodyMedium)
+                Text(com.hark.sothudiary.i18n.S6.priceRulesText.s(), style = MaterialTheme.typography.bodyMedium)
             }
 
             SectionCard(title = S.about.s()) {

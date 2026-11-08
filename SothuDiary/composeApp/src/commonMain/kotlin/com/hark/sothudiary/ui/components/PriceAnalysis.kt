@@ -379,7 +379,7 @@ fun PriceCheckCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (needsKey && onSetupKey != null) {
-                    Text(S.needKeyForCheck.s(), style = MaterialTheme.typography.bodySmall)
+                    Text(com.hark.sothudiary.i18n.S6.priceNeedKey.s(), style = MaterialTheme.typography.bodySmall)
                     Button(onClick = onSetupKey, modifier = Modifier.fillMaxWidth()) { Text(S.setUpLiveCheck.s()) }
                 } else if (onFindOnline != null) FindOnlineButton(onFindOnline, findingOnline, prominent = true)
                 if (lookupError?.error != null && !needsKey) LookupErrorNote(lookupError.error, lookupError.retryAt)
@@ -457,7 +457,7 @@ fun PriceCheckCard(
         }
         // 2.3.0: rates found through our own free web search, or its raw results when Gemini could not read them.
         if (latestLookup != null && latestLookup.viaSearch && latestLookup.found > 0)
-            Text(S.viaSearchNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+            Text(com.hark.sothudiary.i18n.S6.viaSearchNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
         if (latestLookup != null && latestLookup.snippets.isNotEmpty())
             com.hark.sothudiary.ui.screens.WebSnippetList(latestLookup.snippets, onOpenUrl)
         Spacer(Modifier.height(8.dp))
@@ -474,12 +474,12 @@ fun PriceCheckCard(
 const val TN_REGINET = "https://tnreginet.gov.in/portal/"
 
 @Composable
-fun FindOnlineButton(onClick: () -> Unit, busy: Boolean, prominent: Boolean) {
+fun FindOnlineButton(onClick: () -> Unit, busy: Boolean, prominent: Boolean, label: String? = null) {
     val content: @Composable () -> Unit = {
         if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
         else Icon(Icons.Filled.TravelExplore, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
-        Text(if (busy) S.findingOnline.s() else S.refreshLiveRates.s())
+        Text(if (busy) S.findingOnline.s() else label ?: S.refreshLiveRates.s())
     }
     if (prominent) Button(onClick = onClick, enabled = !busy, modifier = Modifier.fillMaxWidth()) { content() }
     else OutlinedButton(onClick = onClick, enabled = !busy, modifier = Modifier.fillMaxWidth()) { content() }

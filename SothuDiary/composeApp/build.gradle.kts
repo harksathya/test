@@ -80,8 +80,8 @@ android {
         applicationId = "com.hark.sothudiary"
         minSdk = 24
         targetSdk = 34
-        versionCode = 11
-        versionName = "2.5.0"
+        versionCode = 12
+        versionName = "2.6.0"
         // Phones are ARM; dropping x86 keeps ML Kit's native OCR libraries out of the APK for emulators only.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -129,7 +129,17 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "SothuDiary"
-            packageVersion = "2.5.0"
+            packageVersion = "2.6.0"
         }
+    }
+}
+
+// 2.6.0: the live endpoint probe (desktopTest LiveEndpointsProbe, CI only) prints "LIVE PROBE | …" lines – show them
+// in the CI log.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        showStandardStreams = true
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }

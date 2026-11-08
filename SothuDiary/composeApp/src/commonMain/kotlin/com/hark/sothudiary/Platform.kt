@@ -70,6 +70,12 @@ interface PlatformActions {
 
     /** 2.4.0: writes [text] to a file in the app's share folder and returns its absolute path. */
     fun writeShareFile(fileName: String, text: String): String? = null
+
+    /**
+     * 2.6.0: lets the user pick a .sothu property file (Android: the system file picker, any type, since WhatsApp /
+     * Downloads often hand .sothu files over as application/octet-stream) and returns its text, null when cancelled.
+     */
+    fun pickPropertyFile(onResult: (String?) -> Unit) = pickTextFile(onResult)
 }
 
 /** 2.4.0: what goes on a "Share as image" card. Lines are already in the user's language. */

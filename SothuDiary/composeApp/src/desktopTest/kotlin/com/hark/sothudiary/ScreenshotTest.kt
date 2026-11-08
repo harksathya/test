@@ -159,6 +159,18 @@ class ScreenshotTest {
                 com.hark.sothudiary.ui.OverlayHost()
             }
         }
+        // 2.6.0: "Import .sothu file" on a new property; online AI search on tap (price / land) with a non-Gemini key.
+        shot("edit_new", Lang.EN, ThemeMode.LIGHT, h = 1400) { PropertyEditScreen(it, Route.PropertyEdit(null)) }
+        shot("edit_new_ta", Lang.TA, ThemeMode.LIGHT, h = 1400) { PropertyEditScreen(it, Route.PropertyEdit(null)) }
+        shot("price_check_key", Lang.EN, ThemeMode.LIGHT, h = 3000) { c ->
+            androidx.compose.runtime.remember { c.repo.update { d -> d.copy(settings = d.settings.copy(llmProvider = "groq", llmKeys = mapOf("groq" to "gsk_test"))) } }
+            PriceCheckScreen(c, "p1")
+        }
+        shot("price_check_nokey_ta", Lang.TA, ThemeMode.LIGHT, h = 3000) { PriceCheckScreen(it, "p1") }
+        shot("land_check_key", Lang.EN, ThemeMode.LIGHT, h = 2600) { c ->
+            androidx.compose.runtime.remember { c.repo.update { d -> d.copy(settings = d.settings.copy(llmProvider = "openai", llmKeys = mapOf("openai" to "sk-test"))) } }
+            LandCheckScreen(c, "p1")
+        }
         shot("share_dialog", Lang.EN, ThemeMode.LIGHT, h = 1200) { c ->
             SharePropertyDialog(c, c.repo.data.properties.first { it.id == "p1" }) {}
         }

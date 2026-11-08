@@ -84,6 +84,18 @@ class AndroidPlatform(
         }
     }
 
+    /** 2.6.0: "Import .sothu file" – the system file picker; the file is read off the main thread (at most 2 MB). */
+    override fun pickPropertyFile(onResult: (String?) -> Unit) {
+        bridge.openDocument(com.hark.sothudiary.domain.share.SOTHU_PICK_TYPES) { uri ->
+            if (uri == null) { onResult(null); return@openDocument }
+            Thread {
+                // A file that cannot be opened reads as "" (the import dialog then says it is not a property file).
+                val text = AndroidShare.readUri(context, uri) ?: ""
+                android.os.Handler(android.os.Looper.getMainLooper()).post { onResult(text) }
+            }.start()
+        }
+    }
+
     override fun openMap(lat: Double?, lng: Double?, label: String) {
         if (lat != null && lng != null) {
             val geo = Uri.parse("geo:$lat,$lng?q=$lat,$lng(" + Uri.encode(label.ifBlank { "Property" }) + ")")

@@ -1,5 +1,6 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.domain.ai.llm
 import com.hark.sothudiary.domain.ai.hasAiKey
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -390,29 +391,80 @@ fun PriceCheckScreen(ctx: AppContext, propertyId: String) {
         containerColor = MaterialTheme.colorScheme.background,
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // 2.6.0 (issue #1): the online price search with the AI provider chosen at setup – only on the user's tap.
+            val llm = data.settings.llm()
+            val pLat = p.lat; val pLng = p.lng
+            val runKey = "price:${p.id}"
+            val searching = com.hark.sothudiary.domain.CheckRunner.isRunning("price", p.id)
+            val latest = if (pLat != null && pLng != null) com.hark.sothudiary.domain.pricing.latestLookup(data, pLat, pLng, group) else null
+            var askKey by remember { mutableStateOf(false) }
+            val hint = listOf(p.land.village.ifBlank { p.locality }, p.land.taluk.ifBlank { p.taluk }, p.land.district.ifBlank { p.district })
+                .filter { it.isNotBlank() }.distinct().joinToString(", ").ifBlank { p.address }
             PriceCheckCard(
                 p, check,
                 onOpenProperty = { ctx.nav.push(Route.PropertyDetail(it)) },
                 onOpenUrl = { ctx.platform.openUrl(it) },
                 onAreaRates = { ctx.nav.push(Route.AreaRates(p.id, group)) },
                 onFindOnline = null, needsKey = false,
+                latestLookup = latest,
             )
+            SectionCard(title = com.hark.sothudiary.i18n.S4.rsSourceOnline.s(), icon = Icons.Filled.Insights) {
+                when {
+                    !llm.hasKey -> {
+                        Text(com.hark.sothudiary.i18n.S6.priceNeedKey.s(), style = MaterialTheme.typography.bodyMedium)
+                        OutlinedButton(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth()) { Text(com.hark.sothudiary.i18n.S6.addAiKey.s()) }
+                    }
+                    pLat == null || pLng == null -> Text(com.hark.sothudiary.i18n.S6.needPinForAi.s(), style = MaterialTheme.typography.bodyMedium)
+                    else -> {
+                        Text(com.hark.sothudiary.i18n.S6.aiOnTapNote.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (latest != null) Text(com.hark.sothudiary.i18n.S6.aiLastRun.f(com.hark.sothudiary.domain.formatDateShort(latest.fetchedAt, lang)),
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        com.hark.sothudiary.ui.components.FindOnlineButton(
+                            onClick = { com.hark.sothudiary.domain.CheckRunner.price(ctx.repo, runKey, pLat, pLng, group, hint) },
+                            busy = searching, prominent = check.estimate.insufficient,
+                            label = com.hark.sothudiary.i18n.S6.aiSearchPrice.f(llm.provider.name),
+                        )
+                        if (searching) Text(com.hark.sothudiary.i18n.S6.aiSearching.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        val err = latest?.error
+                        if (!searching && err != null) com.hark.sothudiary.ui.components.LookupErrorNote(err, latest.retryAt)
+                        else if (!searching && latest != null && latest.error == null)
+                            Text(if (latest.found > 0) S.onlineSaved.format(lang, latest.found, latest.skipped) else S.onlineNone.format(lang, latest.skipped),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            if (askKey) com.hark.sothudiary.ui.components.GeminiKeyDialog(ctx) { askKey = false }
             SectionCard(title = S4.rsYourRates.s(), icon = Icons.Filled.EditNote) {
                 Text(S4.rsAddRateHint.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 mine.forEach { r -> UserRateRow(ctx, r) }
                 AddRateButton(ctx, p.land.village.ifBlank { p.locality }.ifBlank { p.title }, p.lat, p.lng, group, p.land.district.ifBlank { p.district })
             }
             val own = check.estimate.comparables.count { it.source == com.hark.sothudiary.domain.pricing.CompSource.YOUR_LISTING }
-            val entered = check.estimate.comparables.count { it.source == com.hark.sothudiary.domain.pricing.CompSource.ONLINE }
+            // 2.6.0: rates the user added vs rates found by the online search (both are "ONLINE" comparables).
+            val youNames = setOf(S4.rsEnteredByYou.en, S4.rsEnteredByYou.ta)
+            val entered = check.estimate.comparables.count { it.source == com.hark.sothudiary.domain.pricing.CompSource.ONLINE && it.sourceName in youNames }
             StatusPanel(
                 listOf(
                     SourceStatus(S4.rsSourceOwn.of(lang), own > 0, S4.rsUsedCount.format(lang, own)),
                     SourceStatus(S4.rsSourceEntered.of(lang), entered > 0, S4.rsUsedCount.format(lang, entered)),
                     SourceStatus(S4.gvTile.of(lang), p.registry.guideline != null, if (p.registry.guideline != null) S4.rsGvSaved.of(lang) else S4.rsGvMissing.of(lang)),
-                    SourceStatus(S4.rsSourceOnline.of(lang), null, S4.rsOnlineOff.of(lang)),
-                ),
+                    onlineStatusLine(lang, llm.hasKey, latest),
+                ) + latest?.status.orEmpty(),
+                runningSince = com.hark.sothudiary.domain.CheckRunner.running[runKey],
             )
         }
+    }
+}
+
+/** 2.6.0: the "Online price sites" line of the price check's Status panel. */
+fun onlineStatusLine(lang: com.hark.sothudiary.data.Lang, hasKey: Boolean, latest: com.hark.sothudiary.data.RateLookup?): SourceStatus {
+    val name = S4.rsSourceOnline.of(lang)
+    return when {
+        !hasKey && latest == null -> SourceStatus(name, null, com.hark.sothudiary.i18n.S6.rsOnlineNoKey.of(lang))
+        latest == null -> SourceStatus(name, null, com.hark.sothudiary.i18n.S6.rsOnlineNotRun.of(lang))
+        latest.error != null -> SourceStatus(name, false, com.hark.sothudiary.i18n.S6.rsOnlineFailed.format(lang, com.hark.sothudiary.domain.pricing.shortAiError(latest.error)))
+        else -> SourceStatus(name, latest.found > 0, com.hark.sothudiary.i18n.S6.rsOnlineFound.format(lang, latest.found,
+            com.hark.sothudiary.domain.formatDateShort(latest.fetchedAt, lang)))
     }
 }
 

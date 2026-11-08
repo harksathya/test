@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.3.1
+# Sothu Diary (சொத்து டைரி) – v2.6.0
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -6,6 +6,26 @@ the documents you have verified – and get a detailed, explainable **price chec
 rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-tap **த / EN**).
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
+
+## What's new in v2.6.0
+
+- **AI search works with any provider (issue #1 finished).** The online price search (Price check, Area rates) and the
+  land check's zoning / announced roads / growth search were still behind the 2.4.0 off-switches, so the provider chosen
+  at setup was never actually used. They are now buttons – *Search nearby prices online (AI · provider)* and *Search
+  zoning, roads & growth online (AI · provider)* – that run only on the user's tap (2.4.0's "nothing third-party is
+  read automatically" still holds), in the app-wide CheckRunner (leaving the screen does not cancel them), and report
+  every outcome in the Status panel (found / no key / quota / key refused / network). Gemini uses Google Search
+  grounding; the other providers read the app's free web search results; every number must cite its page.
+- Messages no longer say "Gemini key" / "free Gemini limit" when another provider is in use; "Auto" model choice puts
+  premium tiers (OpenAI *-pro*, Claude Opus) last.
+- **Import .sothu file / .sothu கோப்பை இறக்கு** on a new property, the property list (top bar, empty list) and Home's
+  welcome card: the system file picker → the same Add / Update dialog as a received link. Opening a .sothu file from
+  WhatsApp / Files (typed `application/octet-stream`) and sharing it into the app (any type, name ending in `.sothu`)
+  now import it too.
+- Price check Status separates "Rates you added" from rates found online.
+- CI prints a live probe of every outside service (Overpass mirrors, Open-Meteo, Nominatim, web search engines,
+  TNREGINET form ids, each AI provider) – `LIVE PROBE |` lines in the "Compile desktop target + run shared unit tests" step.
+- ISRO Bhuvan land use stays off (its terms need NRSC's written permission for automatic use).
 
 ## What's new in v2.3.1
 

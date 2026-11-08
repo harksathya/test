@@ -63,4 +63,59 @@ object CheckRunner {
             }
         }
     }
+
+    /**
+     * 2.6.0: "Search online with AI" on the Land check screen – zoning, announced roads and growth from the AI provider
+     * chosen at setup (issue #1). Runs only on the user's tap, needs a saved check for the current pin ([base]).
+     */
+    fun landAi(repo: JsonRepository, p: Property, typeText: String, base: com.hark.sothudiary.data.LandCheck) {
+        val k = "landai:${p.id}"
+        if (running.containsKey(k)) return
+        running[k] = nowMillis()
+        val llm = repo.data.settings.llm()
+        scope.launch {
+            try {
+                val r = com.hark.sothudiary.domain.land.runLandAi(p, llm, typeText, base)
+                onMain {
+                    // Save onto the newest check of this property (a land check may have finished meanwhile).
+                    val latest = landCheckFor(repo.data, p.id)?.takeIf { it.key == base.key } ?: base
+                    repo.saveLandCheck(latest.copy(ai = r.ai, aiError = r.aiError, aiRetryAt = r.aiRetryAt, aiModel = r.aiModel,
+                        aiFetchedAt = r.aiFetchedAt, sources = r.sources, aiViaSearch = r.aiViaSearch, webSnippets = r.webSnippets,
+                        status = latest.status.filterNot { it.source.startsWith(com.hark.sothudiary.domain.land.LandRules.AI_STATUS_PREFIX) } +
+                            r.status.filter { it.source.startsWith(com.hark.sothudiary.domain.land.LandRules.AI_STATUS_PREFIX) }))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // The Status panel keeps the earlier lines; nothing to crash for.
+            } finally {
+                withContext(Dispatchers.Main) { running.remove(k) }
+            }
+        }
+    }
+
+    /**
+     * 2.6.0: "Search online prices with AI" (Price check / Area rates): the live lookup of 2.1–2.3 with the provider
+     * chosen at setup, for the property's own pin and type. Only on the user's tap (no automatic price data, 2.4.0).
+     * [key] identifies the place for [running] ("price:<property id>" or an Area rates target).
+     */
+    fun price(repo: JsonRepository, key: String, lat: Double, lng: Double, group: Int, placeHint: String) {
+        if (running.containsKey(key)) return
+        running[key] = nowMillis()
+        val llm = repo.data.settings.llm()
+        scope.launch {
+            try {
+                val r = com.hark.sothudiary.domain.pricing.liveLookup(llm, lat, lng, group, placeHint)
+                onMain { repo.saveLookup(r.lookup, r.rates) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                val lk = com.hark.sothudiary.domain.pricing.lookupKey(lat, lng, group)
+                onMain { repo.saveLookup(com.hark.sothudiary.data.RateLookup(lk, lat, lng, group, placeHint, nowMillis(),
+                    error = com.hark.sothudiary.domain.pricing.taggedError(com.hark.sothudiary.domain.pricing.LookupErrorKind.OTHER, e.message ?: e::class.simpleName.orEmpty())), emptyList()) }
+            } finally {
+                withContext(Dispatchers.Main) { running.remove(key) }
+            }
+        }
+    }
 }

@@ -76,6 +76,15 @@ fun codeFromFileText(text: String?): String? {
     return extractShareCode(t)
 }
 
+/**
+ * 2.6.0: what to hand to the import dialog for a picked / opened file: its share code, or "bad" so the dialog says the
+ * file is not a Sothu Diary property. Null when no file was read at all (cancelled picker).
+ */
+fun importCodeForFile(text: String?): String? = if (text == null) null else codeFromFileText(text) ?: "bad"
+
+/** 2.6.0: MIME types offered to the file picker for a .sothu file (the last, any file, because senders re-type it). */
+val SOTHU_PICK_TYPES = arrayOf(SOTHU_MIME, "application/octet-stream", "application/json", "text/plain", "*/*")
+
 /** A file name from the title ("10 cent plot, Panpoli.sothu"). */
 fun shareFileName(title: String): String =
     title.replace(Regex("""[\\/:*?"<>|\n\r]"""), " ").trim().take(40).ifBlank { "property" } + "." + SOTHU_FILE_EXT

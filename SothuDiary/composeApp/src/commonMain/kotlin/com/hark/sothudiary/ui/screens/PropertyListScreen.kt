@@ -1,5 +1,7 @@
 package com.hark.sothudiary.ui.screens
 
+import androidx.compose.material.icons.filled.FileOpen
+import com.hark.sothudiary.ui.theme.LocalBrand
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -176,6 +178,12 @@ fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
                 title = S.tabProperties.s(),
                 subtitle = S.nResults.f(data.properties.size),
                 onToggleLang = ctx.toggleLang,
+                actions = {
+                    // 2.6.0: import a .sothu property file.
+                    IconButton(onClick = { PropertyImport.start(ctx) }) {
+                        Icon(Icons.Filled.FileOpen, contentDescription = com.hark.sothudiary.i18n.S6.importFile.s(), tint = LocalBrand.current.onBar)
+                    }
+                },
             )
         },
         floatingActionButton = {
@@ -276,7 +284,10 @@ fun PropertyListScreen(ctx: AppContext, selectedId: String?) {
                     if (data.properties.isEmpty()) S.noPropertiesBody.s() else S.noMatchesBody.s(),
                 ) {
                     if (data.properties.isNotEmpty()) TextButton(onClick = { f.clear(); f.query = "" }) { Text(S.clearFilters.s()) }
-                    else PrimaryButton(S.addProperty.s(), { ctx.nav.select(Route.PropertyEdit(null)) }, icon = Icons.Filled.Add)
+                    else {
+                        PrimaryButton(S.addProperty.s(), { ctx.nav.select(Route.PropertyEdit(null)) }, icon = Icons.Filled.Add)
+                        ImportSothuButton(ctx, Modifier.padding(top = 8.dp))
+                    }
                 }
             } else {
                 val groups: List<Triple<String, String, List<Property>>> = if (f.group == GroupBy.NONE) listOf(Triple("", "", list)) else {

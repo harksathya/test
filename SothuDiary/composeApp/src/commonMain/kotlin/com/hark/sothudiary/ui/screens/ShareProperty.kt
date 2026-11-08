@@ -1,5 +1,8 @@
 package com.hark.sothudiary.ui.screens
 
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -205,4 +208,35 @@ fun ImportSharedDialog(ctx: AppContext, sp: SharedProperty?, onDone: () -> Unit)
             }
         },
     )
+}
+
+
+/**
+ * 2.6.0: "Import .sothu file" – opens the file picker, reads the property file and shows the same Add / Update dialog
+ * as a received link (App.kt watches [PropertyImport.pending]).
+ */
+object PropertyImport {
+    /** A share code (or "bad") waiting for the import dialog. */
+    var pending by androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    fun start(ctx: AppContext) {
+        ctx.platform.pickPropertyFile { text ->
+            val code = com.hark.sothudiary.domain.share.importCodeForFile(text)
+            if (code != null) pending = code
+        }
+    }
+}
+
+@Composable
+fun ImportSothuButton(ctx: AppContext, modifier: Modifier = Modifier, showHint: Boolean = false) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (showHint) Text(com.hark.sothudiary.i18n.S6.importFileHint.s(), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.material3.OutlinedButton(onClick = { PropertyImport.start(ctx) }, modifier = Modifier.fillMaxWidth()) {
+            androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.FileOpen, contentDescription = null,
+                modifier = Modifier.size(18.dp))
+            androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+            Text(com.hark.sothudiary.i18n.S6.importFile.s())
+        }
+    }
 }

@@ -136,31 +136,22 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
         }
     }
 
+    fun areaKey(la: Double, ln: Double) = "area:" + com.hark.sothudiary.domain.pricing.lookupKey(la, ln, group)
+
+    /**
+     * 2.6.0: the online price search (AI provider chosen at setup) runs only when the user taps it – 2.4.0's "no
+     * automatic price data" still holds – and in the app scope (CheckRunner), so leaving the screen does not cancel it.
+     */
     fun lookup(t: AreaTarget, force: Boolean) {
-        // 2.4.0: no automatic online price data (user decision) – rates come from the user's own entries.
-        if (!PriceRules.ONLINE_LOOKUP) return
+        if (!force && !PriceRules.ONLINE_LOOKUP) return
         val llm = data.settings.llm()
         val la = t.lat; val ln = t.lng
         if (!llm.hasKey) { if (force) askKey = true; return }
-        if (la == null || ln == null || finding) return
+        if (la == null || ln == null) return
         if (!force && freshLookup(data, la, ln, group) != null) return
-        finding = true
         lookupMsg = null
-        scope.launch {
-            val r = runCatching { liveLookup(llm, la, ln, group, t.name) }.getOrNull()
-            if (r != null) ctx.repo.saveLookup(r.lookup, r.rates)
-            lookupMsg = when {
-                r == null -> S.onlineError.format(lang, "network")
-                // Shown once, by the friendly error note (from the saved lookup), not here as well.
-                r.error != null -> null
-                r.rates.isEmpty() -> S.onlineNone.format(lang, r.lookup.skipped)
-                else -> S.onlineSaved.format(lang, r.rates.size, r.lookup.skipped)
-            }
-            finding = false
-        }
+        com.hark.sothudiary.domain.CheckRunner.price(ctx.repo, areaKey(la, ln), la, ln, group, t.name)
     }
-
-    LaunchedEffect(target, group, data.settings.llm()) { target?.let { lookup(it, force = false) } }
 
     Scaffold(
         topBar = { AppTopBar(S.tabAreaRates.s(), ctx.toggleLang, onBack = onBack, subtitle = S.areaRatesSub.s()) },
@@ -256,9 +247,16 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (!PriceRules.ONLINE_LOOKUP) com.hark.sothudiary.ui.screens.AddRateButton(ctx, t.name, t.lat, t.lng, group)
-                    else if (data.settings.hasAiKey) FindOnlineButton({ lookup(t, force = true) }, finding, prominent = est.insufficient)
-                    else Button(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth()) { Text(S.setUpLiveCheck.s()) }
+                    com.hark.sothudiary.ui.screens.AddRateButton(ctx, t.name, t.lat, t.lng, group)
+                    val aiSearching = la != null && ln != null && com.hark.sothudiary.domain.CheckRunner.running.containsKey(areaKey(la, ln))
+                    if (data.settings.hasAiKey) {
+                        if (la != null && ln != null) FindOnlineButton({ lookup(t, force = true) }, aiSearching, prominent = est.insufficient,
+                            label = com.hark.sothudiary.i18n.S6.aiSearchPrice.f(data.settings.llm().provider.name))
+                        Text(com.hark.sothudiary.i18n.S6.aiOnTapNote.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else OutlinedButton(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth()) { Text(com.hark.sothudiary.i18n.S6.addAiKey.s()) }
+                    if (!aiSearching && latest != null && latest.error == null && latest.fetchedAt > 0)
+                        Text(if (latest.found > 0) S.onlineSaved.format(lang, latest.found, latest.skipped) else S.onlineNone.format(lang, latest.skipped),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     val failed = latest?.error
                     if (failed != null && failed != "no_key") LookupErrorNote(failed, latest.retryAt)
                     else lookupMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }

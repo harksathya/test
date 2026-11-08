@@ -137,6 +137,15 @@ fun App(
         }
     }
 
+    // 2.6.0: a .sothu file picked with "Import .sothu file".
+    val picked = com.hark.sothudiary.ui.screens.PropertyImport.pending
+    LaunchedEffect(picked) {
+        if (picked != null) {
+            importCode = picked
+            com.hark.sothudiary.ui.screens.PropertyImport.pending = null
+        }
+    }
+
     LaunchedEffect(shared) {
         val sc = shared
         // 2.3.0: a Sothu Diary share link shared into the app (e.g. from WhatsApp) imports that property.

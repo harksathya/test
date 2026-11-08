@@ -142,6 +142,12 @@ private val NON_CHAT = listOf(
     "vision", "deep-research", "robotics", "native", "live",
 )
 
+/** 2.6.0: "gpt-5-pro", "o3-pro", "claude-opus-4-1" … */
+internal fun isPremium(id: String): Boolean {
+    val l = id.lowercase()
+    return Regex("""(^|[-_/.])pro($|[-_.])""").containsMatchIn(l) || "opus" in l
+}
+
 private fun isPreview(id: String) = listOf("preview", "exp", "beta", "alpha").any { it in id.lowercase() }
 
 /**
@@ -155,6 +161,9 @@ fun rankChatModels(provider: LlmProvider, models: List<ModelInfo>): List<String>
     return usable.sortedWith(compareBy<ModelInfo>(
         { if (it.id.lowercase().endsWith("/auto")) 0 else 1 },
         { if (isPreview(it.id)) 1 else 0 },
+        // 2.6.0: premium tiers (OpenAI "…-pro" – answered only by the Responses API –, Claude Opus) after the normal
+        // models, so "Auto" does not start with the slowest / most expensive model of a key.
+        { if (isPremium(it.id)) 1 else 0 },
         { -it.created },
         { it.id.length },
     )).map { it.id }.distinct()

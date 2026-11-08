@@ -97,6 +97,14 @@ object LandRules {
      */
     const val AUTO_BHUVAN = false
     const val AUTO_AI_SEARCH = false
+    /**
+     * 2.6.0: the AI web search is no longer only switched off – it runs when the user taps "Search online with AI"
+     * on the Land check screen ([runLandAi], with the AI provider chosen at setup, issue #1). Nothing third-party is
+     * read automatically (the 2.4.0 decision above still holds); a tap is the user asking for it.
+     */
+    const val AI_ON_TAP = true
+    /** Name of the AI line in [com.hark.sothudiary.data.LandCheck.status] (replaced when the AI part runs again). */
+    const val AI_STATUS_PREFIX = "AI web search"
 }
 
 /** Half-width of a river / canal / stream mapped only as a centre line (OSM has no width). */
@@ -284,6 +292,8 @@ enum class LandReason {
     UTILITIES, UTILITIES_DOCS, NO_UTILITIES,
     // Growth
     GROWTH_AI, GROWTH_NO_KEY, GROWTH_UNKNOWN,
+    /** 2.6.0: an AI key is set but the online search has not been run for this pin (it runs on the user's tap). */
+    GROWTH_NOT_RUN,
     // any tile
     NO_MAP_DATA,
     // 2.3.0 – Railway
@@ -497,6 +507,7 @@ fun growthTile(c: LandCheck, hasKey: Boolean): TileResult {
     return when {
         rating != LandRating.UNKNOWN -> TileResult(LandTile.GROWTH, rating, LandReason.GROWTH_AI, listOf(c.ai?.growthReason.orEmpty()), ai = true)
         !hasKey && c.ai == null -> TileResult(LandTile.GROWTH, LandRating.UNKNOWN, LandReason.GROWTH_NO_KEY)
+        c.ai == null && c.aiError == null && c.aiFetchedAt == 0L -> TileResult(LandTile.GROWTH, LandRating.UNKNOWN, LandReason.GROWTH_NOT_RUN)
         else -> TileResult(LandTile.GROWTH, LandRating.UNKNOWN, LandReason.GROWTH_UNKNOWN, ai = c.ai != null)
     }
 }
@@ -715,6 +726,8 @@ private suspend fun bhuvanWithStatus(points: List<Pair<Double, Double>>): Pair<L
 suspend fun runLandCheck(
     p: Property, llm: com.hark.sothudiary.domain.ai.LlmConfig, typeText: String, previous: LandCheck?, now: Long = nowMillis(),
     onPartial: suspend (LandCheck) -> Unit = {},
+    /** 2.6.0: also run the AI web search now (the screen's "Search online with AI" button sets this through [runLandAi]). */
+    withAi: Boolean = LandRules.AUTO_AI_SEARCH,
 ): LandCheck? {
     val lat = p.lat ?: return null
     val lng = p.lng ?: return null
@@ -744,17 +757,7 @@ suspend fun runLandCheck(
             kotlinx.coroutines.withTimeoutOrNull(LandRules.QUICK_SOURCE_MS + 5_000) { bhuvanWithStatus(pts) }
                 ?: (null to SourceStatusLine("ISRO Bhuvan land use", false, "timeout"))
         }
-        val aiJob = if (!llm.hasKey || !LandRules.AUTO_AI_SEARCH) null else async {
-            val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
-            val hint = listOf(p.land.village.ifBlank { p.locality }, p.land.taluk.ifBlank { p.taluk }, p.land.district.ifBlank { p.district })
-                .filter { it.isNotBlank() }.distinct().joinToString(", ").ifBlank { p.address }
-            val areaText = if (area > 0) "${dec1(sqmToCents(area))} cents (${dec1(sqmToCents(area) / 100)} acres)" else "size not known"
-            val t0 = nowMillis()
-            val g = kotlinx.coroutines.withTimeoutOrNull(LandRules.AI_BUDGET_MS) {
-                groundedGenerate(llm, buildLandPrompt(describePlace(rev, hint), lat, lng, areaText, typeText), now, landSearchQueries(rev, hint))
-            } ?: Grounded.Failed("[other] The AI web search took too long.", 0L, "auto")
-            g to (nowMillis() - t0)
-        }
+        val aiJob = if (!llm.hasKey || !withAi) null else async { landAiSearch(p, llm, typeText, area, now) }
         val osm = osmJob.await()
         val (elev, elevLine) = elevJob.await()
         val (lulc, lulcLine) = lulcJob?.await()
@@ -784,38 +787,70 @@ suspend fun runLandCheck(
             else -> c.copy(lulcError = "network")
         }
         val mapLines = osm.attempts.map { it.toStatus() } + elevLine.toStatus() + lulcLine.toStatus()
-        val aiPending = SourceStatusLine("AI web search (${llm.provider.name})", null, when {
+        val aiPending = SourceStatusLine("${LandRules.AI_STATUS_PREFIX} (${llm.provider.name})", null, when {
             aiJob != null -> "working…"
-            !LandRules.AUTO_AI_SEARCH -> "not run automatically (reads third-party pages)"
-            else -> "skipped – no AI key (optional)"
+            !llm.hasKey -> "skipped – no AI key (optional)"
+            sameSpot?.ai != null -> "earlier result kept – tap “Search online with AI” to search again"
+            else -> "not run yet – tap “Search online with AI” (reads public web pages)"
         }).toStatus()
         // Keep the earlier AI part while the new one is running.
         c = c.copy(ai = sameSpot?.ai, aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty(), aiModel = sameSpot?.aiModel.orEmpty(),
-            status = mapLines + aiPending)
+            aiViaSearch = sameSpot?.aiViaSearch ?: false, status = mapLines + aiPending)
         if (aiJob != null) runCatching { onPartial(c) }
 
         val aiRes = aiJob?.await()
-        val ai = aiRes?.first
-        val aiMs = aiRes?.second ?: 0L
-        c = when (ai) {
-            null -> c
-            is Grounded.Ok -> {
-                val parsed = parseLandAi(ai.text)?.let { if (ai.viaSearch) onlyCitedResults(it, ai.hits) else it }
-                if (parsed == null) c.copy(aiError = "[other] The AI reply had no readable result.", aiModel = ai.model,
-                    webSnippets = if (ai.viaSearch) ai.hits.take(8) else emptyList())
-                else c.copy(ai = parsed, aiModel = ai.model, aiFetchedAt = now, sources = ai.sources.take(12), aiViaSearch = ai.viaSearch)
-            }
-            is Grounded.Failed -> c.copy(aiError = ai.error, aiRetryAt = ai.retryAt, aiModel = ai.model, webSnippets = ai.snippets.take(8))
-        }
-        val aiLine = when (ai) {
-            null -> aiPending
-            is Grounded.Ok -> SourceStatusLine("AI web search (${ai.model})", c.aiError == null,
-                if (c.aiError == null) "${c.sources.size} sources" else "reply had no readable result", aiMs).toStatus()
-            is Grounded.Failed -> SourceStatusLine("AI web search (${llm.provider.name})", false,
-                com.hark.sothudiary.domain.pricing.shortAiError(ai.error), aiMs, ai.error.take(300)).toStatus()
-        }
-        c.copy(status = mapLines + aiLine)
+        if (aiRes == null) c.copy(status = mapLines + aiPending)
+        else applyLandAi(c, aiRes.first, aiRes.second, llm, now)
     }
+}
+
+/** 2.6.0: the AI part of the land check – zoning, announced roads, growth – with the chosen provider ([groundedGenerate]). */
+private suspend fun landAiSearch(p: Property, llm: com.hark.sothudiary.domain.ai.LlmConfig, typeText: String, areaSqm: Double, now: Long): Pair<Grounded, Long> {
+    val lat = p.lat ?: return Grounded.Failed("[other] The property has no map pin.", 0L, llm.model) to 0L
+    val lng = p.lng ?: return Grounded.Failed("[other] The property has no map pin.", 0L, llm.model) to 0L
+    val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
+    val hint = listOf(p.land.village.ifBlank { p.locality }, p.land.taluk.ifBlank { p.taluk }, p.land.district.ifBlank { p.district })
+        .filter { it.isNotBlank() }.distinct().joinToString(", ").ifBlank { p.address }
+    val areaText = if (areaSqm > 0) "${dec1(sqmToCents(areaSqm))} cents (${dec1(sqmToCents(areaSqm) / 100)} acres)" else "size not known"
+    val t0 = nowMillis()
+    val g = kotlinx.coroutines.withTimeoutOrNull(LandRules.AI_BUDGET_MS) {
+        groundedGenerate(llm, buildLandPrompt(describePlace(rev, hint), lat, lng, areaText, typeText), now, landSearchQueries(rev, hint))
+    } ?: Grounded.Failed("[other] The AI web search took too long.", 0L, "auto")
+    return g to (nowMillis() - t0)
+}
+
+/**
+ * 2.6.0: puts an AI answer into a land check – the parsed result (only cited items with our own web search), or the
+ * error and the raw search results – and replaces the AI line of its Status panel. Pure, so it is unit-tested.
+ */
+fun applyLandAi(base: LandCheck, ai: Grounded, ms: Long, llm: com.hark.sothudiary.domain.ai.LlmConfig, now: Long): LandCheck {
+    val c = when (ai) {
+        is Grounded.Ok -> {
+            val parsed = parseLandAi(ai.text)?.let { if (ai.viaSearch) onlyCitedResults(it, ai.hits) else it }
+            if (parsed == null) base.copy(aiError = "[other] The AI reply had no readable result.", aiModel = ai.model,
+                webSnippets = if (ai.viaSearch) ai.hits.take(8) else emptyList())
+            else base.copy(ai = parsed, aiError = null, aiRetryAt = 0, aiModel = ai.model, aiFetchedAt = now, sources = ai.sources.take(12),
+                aiViaSearch = ai.viaSearch, webSnippets = emptyList())
+        }
+        is Grounded.Failed -> base.copy(aiError = ai.error, aiRetryAt = ai.retryAt, aiModel = ai.model, webSnippets = ai.snippets.take(8))
+    }
+    val line = when (ai) {
+        is Grounded.Ok -> SourceStatusLine("${LandRules.AI_STATUS_PREFIX} (${ai.model})", c.aiError == null,
+            if (c.aiError == null) "${c.sources.size} sources" else "reply had no readable result", ms).toStatus()
+        is Grounded.Failed -> SourceStatusLine("${LandRules.AI_STATUS_PREFIX} (${llm.provider.name})", false,
+            com.hark.sothudiary.domain.pricing.shortAiError(ai.error), ms, ai.error.take(300)).toStatus()
+    }
+    return c.copy(status = c.status.filterNot { it.source.startsWith(LandRules.AI_STATUS_PREFIX) } + line)
+}
+
+/**
+ * 2.6.0: "Search online with AI" on the Land check screen – runs only the AI part for the saved check [base] (same
+ * pin) with the provider chosen at setup, and returns the check with the AI result or its error.
+ */
+suspend fun runLandAi(p: Property, llm: com.hark.sothudiary.domain.ai.LlmConfig, typeText: String, base: LandCheck, now: Long = nowMillis()): LandCheck {
+    if (!llm.hasKey) return applyLandAi(base, Grounded.Failed("no_key", 0L, llm.model), 0L, llm, now)
+    val (g, ms) = landAiSearch(p, llm, typeText, base.plotAreaSqm, now)
+    return applyLandAi(base, g, ms, llm, now)
 }
 
 /** 2.3.0: with our own web search, an item counts only when it cites one of the pages we fetched. */

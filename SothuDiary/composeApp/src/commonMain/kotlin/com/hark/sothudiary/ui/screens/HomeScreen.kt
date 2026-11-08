@@ -303,6 +303,8 @@ private fun WelcomeCard(ctx: AppContext) {
                 Button(onClick = { ctx.nav.select(Route.PropertyEdit(null)) }) { Text(S.addFirstProperty.s()) }
                 OutlinedButton(onClick = { ctx.nav.switchTab(Tab.AREA_RATES) }) { Text(S.checkAreaRates.s()) }
             }
+            // 2.6.0: a property sent from another phone as a .sothu file.
+            ImportSothuButton(ctx, Modifier.padding(top = 8.dp))
         }
     }
 }

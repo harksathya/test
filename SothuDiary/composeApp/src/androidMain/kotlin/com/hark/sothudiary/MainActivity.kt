@@ -118,6 +118,16 @@ class MainActivity : ComponentActivity(), ActivityBridge {
         }.start()
     }
 
+    /** 2.6.0: the file name behind a content:// or file:// URI ("" when the provider does not say). */
+    private fun displayName(uri: Uri): String = runCatching {
+        if (uri.scheme == "file") return@runCatching uri.lastPathSegment.orEmpty()
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0).orEmpty() else ""
+        }.orEmpty()
+    }.getOrDefault("")
+
+    private fun isSothuName(name: String) = name.lowercase().endsWith("." + com.hark.sothudiary.domain.share.SOTHU_FILE_EXT)
+
     private fun handleIntent(intent: Intent?) {
         if (intent?.getStringExtra(Reminders.EXTRA_OPEN) == Reminders.OPEN_FOLLOWUPS) openFollowUps = true
         val action = intent?.action ?: return
@@ -130,11 +140,15 @@ class MainActivity : ComponentActivity(), ActivityBridge {
             return
         }
         // 2.4.0: a .sothu file shared into the app (SEND with a file, not text / images).
+        // 2.6.0: also when the sender typed it text/plain, application/json or */* – a stream whose name ends in .sothu.
         val type = intent.type.orEmpty()
-        if (action == Intent.ACTION_SEND && (type.startsWith("application/"))) {
+        if (action == Intent.ACTION_SEND && !type.startsWith("image/")) {
             @Suppress("DEPRECATION")
-            (intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri)?.let { readPropertyFile(it) }
-            return
+            val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+            if (stream != null && (type.startsWith("application/") || isSothuName(displayName(stream)))) {
+                readPropertyFile(stream)
+                return
+            }
         }
         if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)

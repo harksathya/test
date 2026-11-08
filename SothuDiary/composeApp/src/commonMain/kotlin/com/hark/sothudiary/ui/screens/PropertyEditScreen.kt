@@ -383,6 +383,8 @@ fun PropertyEditScreen(ctx: AppContext, route: Route.PropertyEdit) {
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // 2.6.0: a property sent from another phone as a .sothu file can be imported instead of typed in.
+            if (existing == null && !isShare) SectionCard { ImportSothuButton(ctx, showHint = true) }
             if (isShare) {
                 SectionCard(accent = AutoFillColor) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

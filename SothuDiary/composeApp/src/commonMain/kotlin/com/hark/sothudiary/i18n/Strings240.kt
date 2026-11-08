@@ -148,8 +148,8 @@ object S4 {
     // ---- Price check: the user's own rates ----
     val rsYourRates = Tr("Rates you saw", "நீங்கள் பார்த்த விலைகள்")
     val rsAddRateHint = Tr(
-        "Prices come from your own listings and the rates you add here (a listing, a broker's message, a guideline value you read). Nothing is fetched from price sites.",
-        "விலைகள் உங்கள் சொந்தப் பட்டியல்களிலிருந்தும் நீங்கள் இங்கே சேர்க்கும் விலைகளிலிருந்தும் (விளம்பரம், தரகர் செய்தி, நீங்கள் படித்த வழிகாட்டி மதிப்பு) மட்டுமே. விலை தளங்களிலிருந்து எதுவும் தானாக எடுக்கப்படுவதில்லை.",
+        "Prices come from your own listings and the rates you add here (a listing, a broker's message, a guideline value you read). Nothing is fetched from price sites automatically – only when you tap the online search.",
+        "விலைகள் உங்கள் சொந்தப் பட்டியல்களிலிருந்தும் நீங்கள் இங்கே சேர்க்கும் விலைகளிலிருந்தும் (விளம்பரம், தரகர் செய்தி, நீங்கள் படித்த வழிகாட்டி மதிப்பு) மட்டுமே. விலை தளங்களிலிருந்து எதுவும் தானாக எடுக்கப்படுவதில்லை – இணையத் தேடலை நீங்கள் அழுத்தினால் மட்டும்.",
     )
     val rsAddRate = Tr("Add a rate you saw", "நீங்கள் பார்த்த விலையைச் சேர்")
     val rsPasteHint = Tr("Paste the listing or message – the rate is read for you. Or type it.", "விளம்பரம் அல்லது செய்தியை ஒட்டுங்கள் – விலை தானாகப் படிக்கப்படும். அல்லது தட்டச்சு செய்யுங்கள்.")
