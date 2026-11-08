@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.6.0
+# Sothu Diary (சொத்து டைரி) – v2.6.1
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -6,6 +6,18 @@ the documents you have verified – and get a detailed, explainable **price chec
 rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-tap **த / EN**).
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
+
+## What's new in v2.6.1
+
+- **Land check map data more reliable.** The 2.6.0 CI probe showed the free Overpass servers answering "504 busy" within
+  a second or not answering at all, and the check gave up after one extra try 2 s later. Now, when every server has
+  failed, it tries up to two more rounds after 3 s and 10 s (each on the next server that has not refused the app), and
+  the map-data budget is 75 s instead of 45 s (the check runs in the background and shows partial results).
+- The CI probe also reports overpass-api.de's /api/status and, for a group that failed on a server, each of its layers
+  on their own. (overpass-api.de answered HTTP 406 to GitHub's Azure runners – that network is blocked by the operators;
+  from a phone the app's identifying User-Agent is what their policy asks for. TNREGINET is not reachable from the
+  runners; its guideline form ids – districtList, SROList, villageList, streetName, surveyName – were checked against
+  a 2026 copy of the page and match the prefill script.)
 
 ## What's new in v2.6.0
 

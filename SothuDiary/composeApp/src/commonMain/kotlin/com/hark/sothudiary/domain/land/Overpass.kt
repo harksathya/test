@@ -516,7 +516,7 @@ suspend fun fetchGroup(
             launchOn(order[0])
             var next = 1
             var finished = 0
-            var retried = false
+            var retries = 0
             while (!winner.isCompleted) {
                 val r = kotlinx.coroutines.withTimeoutOrNull(hedgeMs) { done.receive() }
                 if (r != null) {
@@ -527,12 +527,17 @@ suspend fun fetchGroup(
                 if (winner.isCompleted) break
                 if (next < order.size) launchOn(order[next++])
                 else if (finished >= next) {
-                    if (retried) break
-                    retried = true
-                    // Every server failed: one more try on the first after a short back-off, if time allows.
-                    if (budgetMs - (nowMs() - started) < 8_000) break
-                    kotlinx.coroutines.delay(2_000)
-                    launchOn(order[0]); next++
+                    // 2.6.0: every server failed (CI probe 2026-11-08: the free mirrors answered 504 "busy" within a
+                    // second or timed out). Up to [OVERPASS_RETRIES] more tries after a growing pause (3 s, then 10 s –
+                    // the operators ask for a pause after a busy answer), each on the next server that has not
+                    // refused us, while the time budget allows.
+                    if (retries >= OVERPASS_RETRIES) break
+                    val wait = if (retries == 0) 3_000L else 10_000L
+                    if (budgetMs - (nowMs() - started) < wait + 6_000) break
+                    kotlinx.coroutines.delay(wait)
+                    val usable = order.filter { (serverPause[it] ?: 0L) <= nowMs() }.ifEmpty { order }
+                    launchOn(usable[retries % usable.size]); next++
+                    retries++
                 }
             }
             // Lines of tries that ended together with the winner.
@@ -546,6 +551,9 @@ suspend fun fetchGroup(
         lines += SourceStatusLine("Overpass $label", false, "no answer within ${budgetMs / 1000} s")
     return (result ?: OverpassResult(emptyList(), lastError.takeIf { it != "network" } ?: "[other] Overpass: no answer in ${budgetMs / 1000} s (server busy)")) to lines.toList()
 }
+
+/** 2.6.0: extra rounds after every server failed ([fetchGroup]). */
+const val OVERPASS_RETRIES = 2
 
 /** Kept for older callers: one query raced across the servers. */
 suspend fun fetchLayer(query: String, index: Int, budgetMs: Long = 40_000, hedgeMs: Long = 7_000): OverpassResult =

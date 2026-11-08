@@ -27,18 +27,27 @@ class LiveEndpointsProbe {
     fun probe() {
         if (System.getenv("CI") != "true" && System.getenv("SOTHU_LIVE") != "1") return
         runBlocking {
-            withTimeoutOrNull(240_000) { runAll() } ?: out("stopped after 240 s")
+            withTimeoutOrNull(480_000) { runAll() } ?: out("stopped after 480 s")
         }
     }
 
     private suspend fun runAll() {
         // A village pin near Thirumangalam, Madurai.
         val lat = 9.8236; val lng = 77.9870
-        val groups = groupQueries(buildLayerQueries(lat, lng))
+        val layers = buildLayerQueries(lat, lng)
+        val groups = groupQueries(layers)
+        val st = httpCall("https://overpass-api.de/api/status", headers = mapOf("User-Agent" to APP_USER_AGENT), timeoutMs = 15_000)
+        out("overpass-api.de /api/status: HTTP ${st.code} ${st.error ?: ""} ${st.body.orEmpty().replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").take(160)}")
         for ((g, q) in groups) for ((i, url) in OVERPASS_ENDPOINTS.withIndex()) {
+            val host = url.substringAfter("://").substringBefore('/')
             val (res, lines) = fetchGroup(q, i, g, budgetMs = 45_000, endpoints = listOf(url))
-            out("overpass $g ${url.substringAfter("://").substringBefore('/')}: " +
-                (res.error ?: "${res.elements.size} elements") + " | " + lines.joinToString("; ") { "${it.reason} ${it.ms} ms" })
+            out("overpass $g $host: " + (res.error ?: "${res.elements.size} elements") + " | " + lines.joinToString("; ") { "${it.reason} ${it.ms} ms" })
+            // A group that failed on a server that did not refuse us: which of its layers is the slow one?
+            if (res.error != null && lines.none { "406" in it.reason }) for (layer in com.hark.sothudiary.domain.land.OsmGroup.layers[g].orEmpty()) {
+                val lq = layers[layer] ?: continue
+                val (lr, ll) = fetchGroup(lq, 0, layer, budgetMs = 30_000, endpoints = listOf(url))
+                out("   layer $layer on $host: " + (lr.error ?: "${lr.elements.size} elements") + " | " + ll.joinToString("; ") { "${it.reason} ${it.ms} ms" })
+            }
         }
         val elev = runCatching { fetchElevations(listOf(lat to lng, lat + 0.003 to lng)) }.getOrNull()
         out("open-meteo elevation: ${elev ?: "FAILED"}")

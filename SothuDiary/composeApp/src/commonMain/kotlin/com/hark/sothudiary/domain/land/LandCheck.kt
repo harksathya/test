@@ -83,8 +83,11 @@ object LandRules {
     const val FOREST_NEAR_M = 100.0
     /** Version of the map layers a 2.3.0 check fetches ([com.hark.sothudiary.data.LandCheck.layersVersion]). */
     const val LAYERS_VERSION = 2
-    /** Overall time for the map layers, so the screen never waits for minutes. */
-    const val OSM_BUDGET_MS = 45_000L
+    /**
+     * Overall time for the map layers. 2.6.0: 75 s (was 45 s) – the check runs in the background (CheckRunner) and the
+     * free servers are often busy for a few seconds; the extra time pays for the retries in [fetchGroup].
+     */
+    const val OSM_BUDGET_MS = 75_000L
     /** Overall time for the AI part (grounded search, then the free web search fallback). */
     const val AI_BUDGET_MS = 60_000L
     /** 2.4.0: per-source limits for the quick sources (elevation, ISRO Bhuvan) – one slow source never blocks the rest. */

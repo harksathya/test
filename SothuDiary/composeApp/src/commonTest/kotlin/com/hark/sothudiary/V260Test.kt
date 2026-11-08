@@ -180,4 +180,23 @@ class V260Test {
         assertTrue(isPremium("gpt-5-pro")); assertTrue(isPremium("claude-opus-4-1")); assertFalse(isPremium("gpt-5-mini")); assertFalse(isPremium("deepseek-chat"))
         assertFalse(isPremium("mistral-medium-latest")); assertFalse(isPremium("approach"))
     }
+
+    // ---------------- land check: Overpass retries (CI probe: the free mirrors were busy for seconds) ----------------
+
+    @Test fun overpassRetriesAfterEveryServerWasBusy() = runBlocking {
+        val calls = mutableListOf<String>()
+        val (res, lines) = com.hark.sothudiary.domain.land.fetchGroup("q", 0, "(test)", budgetMs = 30_000, hedgeMs = 1_000,
+            endpoints = listOf("https://a/api", "https://b/api"),
+            attempt = { url, _, _, _ ->
+                calls += url
+                if (calls.size <= 2) com.hark.sothudiary.domain.land.OverpassResult(emptyList(), "[other] Overpass HTTP 504 (server busy)") to
+                    com.hark.sothudiary.domain.land.SourceStatusLine("Overpass · $url", false, "HTTP 504 – server busy")
+                else com.hark.sothudiary.domain.land.OverpassResult(com.hark.sothudiary.domain.land.parseOverpass(Fixtures240.OVERPASS_MADURAI_WATER)) to
+                    com.hark.sothudiary.domain.land.SourceStatusLine("Overpass · $url", true, "2 map features")
+            })
+        assertNull(res.error, "the retry after the pause got the data")
+        assertEquals(listOf("https://a/api", "https://b/api", "https://a/api"), calls)
+        assertEquals(listOf(false, false, true), lines.map { it.ok })
+        assertTrue(LandRules.OSM_BUDGET_MS >= 60_000)
+    }
 }
