@@ -1,5 +1,6 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.domain.ai.hasAiKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -140,7 +141,7 @@ fun MapScreen(ctx: AppContext) {
     val water = remember(data) {
         mapped.associate { p ->
             p.id to landCheckFor(data, p.id)?.takeIf { it.key == landCheckKey(p) && it.hasAnyData() }
-                ?.let { assessLand(it, p, data.settings.geminiApiKey.isNotBlank()).tile(LandTile.RISK).rating }
+                ?.let { assessLand(it, p, data.settings.hasAiKey).tile(LandTile.RISK).rating }
         }
     }
     val rates = shown.mapNotNull { p -> tagRate(p)?.takeIf { it.second.isEmpty() }?.first }

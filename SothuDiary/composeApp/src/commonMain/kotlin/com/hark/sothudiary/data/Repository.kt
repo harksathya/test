@@ -1,5 +1,7 @@
 package com.hark.sothudiary.data
 
+import com.hark.sothudiary.domain.ai.withLlm
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -243,6 +245,13 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
     fun setSpeechLang(lang: Lang?) = update { d -> d.copy(settings = d.settings.copy(speechLang = lang)) }
 
     fun setOnboarded() = update { d -> d.copy(settings = d.settings.copy(onboarded = true)) }
+
+    /** 2.5.0: saves [key] / [model] for the LLM [provider] and makes it the one every AI call uses. */
+    fun setLlm(provider: com.hark.sothudiary.domain.ai.LlmProvider, key: String, model: String) = update { d ->
+        d.copy(settings = d.settings.withLlm(provider, key, model))
+    }
+
+    fun setYoutubeKey(youtube: String) = update { d -> d.copy(settings = d.settings.copy(youtubeApiKey = youtube.trim())) }
 
     fun setApiKeys(youtube: String, gemini: String, model: String) = update { d ->
         d.copy(settings = d.settings.copy(youtubeApiKey = youtube.trim(), geminiApiKey = gemini.trim(), geminiModel = normalizeGeminiModel(model)))

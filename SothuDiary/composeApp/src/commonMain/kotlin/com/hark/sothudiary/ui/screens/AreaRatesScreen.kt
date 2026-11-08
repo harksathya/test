@@ -1,5 +1,7 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.domain.ai.llm
+import com.hark.sothudiary.domain.ai.hasAiKey
 import com.hark.sothudiary.domain.GeoPlace
 import androidx.compose.runtime.LaunchedEffect
 import com.hark.sothudiary.domain.formatDateShort
@@ -137,15 +139,15 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
     fun lookup(t: AreaTarget, force: Boolean) {
         // 2.4.0: no automatic online price data (user decision) – rates come from the user's own entries.
         if (!PriceRules.ONLINE_LOOKUP) return
-        val key = data.settings.geminiApiKey
+        val llm = data.settings.llm()
         val la = t.lat; val ln = t.lng
-        if (key.isBlank()) { if (force) askKey = true; return }
+        if (!llm.hasKey) { if (force) askKey = true; return }
         if (la == null || ln == null || finding) return
         if (!force && freshLookup(data, la, ln, group) != null) return
         finding = true
         lookupMsg = null
         scope.launch {
-            val r = runCatching { liveLookup(key, data.settings.geminiModel, la, ln, group, t.name) }.getOrNull()
+            val r = runCatching { liveLookup(llm, la, ln, group, t.name) }.getOrNull()
             if (r != null) ctx.repo.saveLookup(r.lookup, r.rates)
             lookupMsg = when {
                 r == null -> S.onlineError.format(lang, "network")
@@ -158,7 +160,7 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
         }
     }
 
-    LaunchedEffect(target, group, data.settings.geminiApiKey) { target?.let { lookup(it, force = false) } }
+    LaunchedEffect(target, group, data.settings.llm()) { target?.let { lookup(it, force = false) } }
 
     Scaffold(
         topBar = { AppTopBar(S.tabAreaRates.s(), ctx.toggleLang, onBack = onBack, subtitle = S.areaRatesSub.s()) },
@@ -168,7 +170,7 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (data.settings.geminiApiKey.isBlank()) GeminiSetupCard(ctx, onDismiss = null)
+            if (!data.settings.hasAiKey) GeminiSetupCard(ctx, onDismiss = null)
             SectionCard {
                 OutlinedTextField(
                     value = query,
@@ -255,7 +257,7 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
                         )
                     }
                     if (!PriceRules.ONLINE_LOOKUP) com.hark.sothudiary.ui.screens.AddRateButton(ctx, t.name, t.lat, t.lng, group)
-                    else if (data.settings.geminiApiKey.isNotBlank()) FindOnlineButton({ lookup(t, force = true) }, finding, prominent = est.insufficient)
+                    else if (data.settings.hasAiKey) FindOnlineButton({ lookup(t, force = true) }, finding, prominent = est.insufficient)
                     else Button(onClick = { askKey = true }, modifier = Modifier.fillMaxWidth()) { Text(S.setUpLiveCheck.s()) }
                     val failed = latest?.error
                     if (failed != null && failed != "no_key") LookupErrorNote(failed, latest.retryAt)
@@ -304,11 +306,6 @@ fun AreaRatesScreen(ctx: AppContext, initialPropertyId: String?, initialGroup: I
     }
 
     if (askKey) {
-        GeminiKeyDialog(
-            current = data.settings.geminiApiKey,
-            onDismiss = { askKey = false },
-            onSave = { k -> ctx.repo.setApiKeys(data.settings.youtubeApiKey, k, data.settings.geminiModel); askKey = false },
-            onOpenStudio = { ctx.platform.openUrl(AI_STUDIO_URL) },
-        )
+        GeminiKeyDialog(ctx, onDismiss = { askKey = false })
     }
 }

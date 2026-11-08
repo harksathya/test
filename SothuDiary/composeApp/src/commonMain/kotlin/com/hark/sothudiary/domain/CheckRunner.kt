@@ -6,6 +6,7 @@ import com.hark.sothudiary.data.Property
 import com.hark.sothudiary.data.nowMillis
 import com.hark.sothudiary.domain.land.landCheckFor
 import com.hark.sothudiary.domain.land.runLandCheck
+import com.hark.sothudiary.domain.ai.llm
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,7 +50,7 @@ object CheckRunner {
                     onMain { repo.fillLandFromMap(p.id, d, t, rev.locality) }
                 }
                 val prev = landCheckFor(repo.data, p.id)
-                val r = runLandCheck(p, settings.geminiApiKey, settings.geminiModel, typeText, prev, onPartial = { partial ->
+                val r = runLandCheck(p, settings.llm(), typeText, prev, onPartial = { partial ->
                     onMain { repo.saveLandCheck(partial) }
                 })
                 if (r != null) onMain { repo.saveLandCheck(r) }

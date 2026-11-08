@@ -3,8 +3,17 @@ package com.hark.sothudiary.ui.screens
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import com.hark.sothudiary.ui.components.GeminiSetupCard
-import com.hark.sothudiary.data.normalizeGeminiModel
-import com.hark.sothudiary.ui.components.GeminiKeySteps
+import com.hark.sothudiary.ui.components.ProviderPicker
+import com.hark.sothudiary.ui.components.ProviderKeyField
+import com.hark.sothudiary.ui.components.ModelPickerDialog
+import com.hark.sothudiary.domain.ai.AUTO_MODEL
+import com.hark.sothudiary.domain.ai.hasAiKey
+import com.hark.sothudiary.domain.ai.keyFor
+import com.hark.sothudiary.domain.ai.llm
+import com.hark.sothudiary.domain.ai.llmProvider
+import com.hark.sothudiary.domain.ai.modelFor
+import com.hark.sothudiary.domain.ai.normalizeModel
+import com.hark.sothudiary.i18n.S5
 import com.hark.sothudiary.i18n.groupTr
 import com.hark.sothudiary.ui.components.AI_STUDIO_URL
 import com.hark.sothudiary.ui.components.Field
@@ -53,7 +62,7 @@ import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.domain.dec
 
-const val APP_VERSION = "2.4.0"
+const val APP_VERSION = "2.5.0"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -69,7 +78,7 @@ fun SettingsScreen(ctx: AppContext) {
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (data.settings.geminiApiKey.isBlank()) GeminiSetupCard(ctx, onDismiss = null)
+            if (!data.settings.hasAiKey) GeminiSetupCard(ctx, onDismiss = null)
 
             SectionCard(title = S.language.s()) {
                 ChoiceChips(Lang.entries, data.settings.lang, { if (it == Lang.TA) "தமிழ்" else "English" }) { ctx.repo.setLang(it) }
@@ -158,19 +167,33 @@ fun SettingsScreen(ctx: AppContext) {
 
             SectionCard(title = S.onlineServices.s()) {
                 var yt by remember(data.settings.youtubeApiKey) { mutableStateOf(data.settings.youtubeApiKey) }
-                var gm by remember(data.settings.geminiApiKey) { mutableStateOf(data.settings.geminiApiKey) }
+                // 2.5.0 (issue #1): any one AI provider with its own key; the model list comes from the provider.
+                val savedProvider = data.settings.llmProvider()
+                var provider by remember(savedProvider) { mutableStateOf(savedProvider) }
+                var gm by remember(savedProvider, data.settings.keyFor(savedProvider)) { mutableStateOf(data.settings.keyFor(savedProvider)) }
                 val autoLabel = S.geminiAuto.s()
-                val savedModel = normalizeGeminiModel(data.settings.geminiModel)
-                var model by remember(savedModel, autoLabel) { mutableStateOf(if (savedModel == "auto") autoLabel else savedModel) }
+                fun shown(m: String) = if (m == AUTO_MODEL) autoLabel else m
+                var model by remember(savedProvider, data.settings.modelFor(savedProvider), autoLabel) { mutableStateOf(shown(data.settings.modelFor(savedProvider))) }
+                var picking by remember { mutableStateOf(false) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(S.onlineServicesBody.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Field(gm, { gm = it }, S.geminiKey.s(), supporting = S.geminiKeyHint.s())
-                    TextButton(onClick = { ctx.platform.openUrl(AI_STUDIO_URL) }) { Text(S.getFreeKey.s()) }
-                    GeminiKeySteps()
-                    Field(model, { model = it }, S.geminiModel.s(), supporting = S.geminiModelHint.s())
+                    if (data.settings.hasAiKey) Text(S5.inUse.f(data.settings.llm().let { c -> c.provider.name + " · " + shown(c.model) }),
+                        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    ProviderPicker(provider, { p -> provider = p; gm = data.settings.keyFor(p); model = shown(data.settings.modelFor(p)) }, ctx)
+                    ProviderKeyField(provider, gm, { gm = it }, { p -> provider = p; model = shown(data.settings.modelFor(p)) })
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Field(model, { model = it }, S5.aiModel.s(), modifier = Modifier.weight(1f))
+                        Spacer(Modifier.width(6.dp))
+                        OutlinedButton(onClick = { picking = true }, enabled = gm.isNotBlank()) { Text(S5.chooseModel.s()) }
+                    }
+                    Text(S5.aiModelHint.f(provider.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val changed = provider != savedProvider || gm.trim() != data.settings.keyFor(provider) ||
+                        normalizeModel(provider, model) != data.settings.modelFor(provider)
+                    Button(onClick = { ctx.repo.setLlm(provider, gm, model); ctx.platform.toast(S.saved.of(lang)) }, enabled = changed && gm.isNotBlank()) { Text(S.save.s()) }
+                    if (picking) ModelPickerDialog(provider, gm, onDismiss = { picking = false }, onPick = { m -> model = shown(m); picking = false })
+                    HorizontalDivider()
                     Field(yt, { yt = it }, S.youtubeKey.s(), supporting = S.youtubeKeyHint.s())
-                    val changed = yt != data.settings.youtubeApiKey || gm != data.settings.geminiApiKey || normalizeGeminiModel(model) != savedModel
-                    Button(onClick = { ctx.repo.setApiKeys(yt, gm, model); ctx.platform.toast(S.saved.of(lang)) }, enabled = changed) { Text(S.save.s()) }
+                    Button(onClick = { ctx.repo.setYoutubeKey(yt); ctx.platform.toast(S.saved.of(lang)) }, enabled = yt != data.settings.youtubeApiKey) { Text(S5.youtubeSave.s()) }
                     HorizontalDivider()
                     Text(S.onlineRatesSaved.f(data.rateLookups.size, data.onlineRates.size), style = MaterialTheme.typography.bodyMedium)
                     if (data.rateLookups.isNotEmpty()) {

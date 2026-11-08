@@ -1,5 +1,6 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.domain.ai.hasAiKey
 import com.hark.sothudiary.ui.components.GeminiSetupCard
 
 import androidx.compose.foundation.background
@@ -123,7 +124,7 @@ fun HomeScreen(ctx: AppContext) {
                 QuickAction(Icons.Filled.Map, S.tabMap.s(), MaterialTheme.colorScheme.primary) { ctx.nav.switchTab(Tab.MAP) }
             }
 
-            if (data.settings.geminiApiKey.isBlank() && !data.settings.keyCardDismissed) {
+            if (!data.settings.hasAiKey && !data.settings.keyCardDismissed) {
                 GeminiSetupCard(ctx, onDismiss = { ctx.repo.dismissKeyCard() })
             }
 

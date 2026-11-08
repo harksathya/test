@@ -356,6 +356,13 @@ data class AppSettings(
     /** Optional Gemini API key (Google AI Studio) – "Find nearby rates online". */
     val geminiApiKey: String = "",
     val geminiModel: String = "auto",
+    /**
+     * 2.5.0 (issue #1): the LLM provider chosen at setup (see domain/ai/Llm.kt); blank = Gemini (older data).
+     * Gemini keeps its key / model in [geminiApiKey] / [geminiModel]; every other provider's are kept here by provider id.
+     */
+    val llmProvider: String = "",
+    val llmKeys: Map<String, String> = emptyMap(),
+    val llmModels: Map<String, String> = emptyMap(),
     /** The "set up live price check" card on Home was dismissed. */
     val keyCardDismissed: Boolean = false,
     /** v2.1.2: soft background music while the app is open (Android). On by default, at low volume. */

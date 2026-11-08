@@ -1,5 +1,6 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.domain.ai.hasAiKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -224,7 +225,7 @@ fun areaText(cents: Double, lang: Lang): String =
 /** The current, matching land check of a property (any age), for the detail screen and Worth it. */
 fun currentLandAssessment(ctx: AppContext, p: Property): Pair<LandCheck, LandAssessment>? {
     val c = landCheckFor(ctx.repo.data, p.id)?.takeIf { it.key == landCheckKey(p) && it.hasAnyData() } ?: return null
-    return c to assessLand(c, p, ctx.repo.data.settings.geminiApiKey.isNotBlank())
+    return c to assessLand(c, p, ctx.repo.data.settings.hasAiKey)
 }
 
 // ---------------------------------------------------------------- detail screen card
@@ -430,7 +431,7 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
     val running = com.hark.sothudiary.domain.CheckRunner.isRunning("land", p.id)
     var drawing by remember { mutableStateOf(false) }
     var askKey by remember { mutableStateOf(false) }
-    val hasKey = data.settings.geminiApiKey.isNotBlank()
+    val hasKey = data.settings.hasAiKey
     val saved = landCheckFor(data, p.id)
     val current = saved?.takeIf { it.key == landCheckKey(p) }
     val assessment = current?.takeIf { it.hasAnyData() }?.let { assessLand(it, p, hasKey) }
@@ -627,11 +628,7 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
         )
     }
     if (askKey) {
-        GeminiKeyDialog(
-            current = data.settings.geminiApiKey, onDismiss = { askKey = false },
-            onSave = { k -> ctx.repo.setApiKeys(data.settings.youtubeApiKey, k, data.settings.geminiModel); askKey = false },
-            onOpenStudio = { ctx.platform.openUrl(AI_STUDIO_URL) },
-        )
+        GeminiKeyDialog(ctx, onDismiss = { askKey = false })
     }
 }
 

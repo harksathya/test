@@ -1,5 +1,6 @@
 package com.hark.sothudiary.ui.screens
 
+import com.hark.sothudiary.domain.ai.hasAiKey
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -196,7 +197,7 @@ fun checkLines(ctx: AppContext, p: Property, check: PriceCheck, lang: com.hark.s
     val lc = landCheckFor(data, p.id)?.takeIf { it.key == landCheckKey(p) && it.hasAnyData() }
     var level: LandRating? = null
     val land = lc?.let { c ->
-        val a = com.hark.sothudiary.domain.land.assessLand(c, p, data.settings.geminiApiKey.isNotBlank())
+        val a = com.hark.sothudiary.domain.land.assessLand(c, p, data.settings.hasAiKey)
         val r = a.tile(LandTile.RISK).rating
         level = r
         val word = when (r) { LandRating.GOOD -> S4.riskLow; LandRating.FAIR -> S4.riskMedium; LandRating.POOR -> S4.riskHigh; LandRating.UNKNOWN -> S4.riskUnknown }
@@ -297,7 +298,7 @@ fun scoreArgb(s: Int?): Long = when (scoreBand(s)) {
 fun scoreFor(ctx: AppContext, p: Property, check: PriceCheck?): PropertyScore {
     val data = ctx.repo.data
     val lc = landCheckFor(data, p.id)?.takeIf { it.key == landCheckKey(p) && it.hasAnyData() }
-    val land = lc?.let { com.hark.sothudiary.domain.land.assessLand(it, p, data.settings.geminiApiKey.isNotBlank()) }
+    val land = lc?.let { com.hark.sothudiary.domain.land.assessLand(it, p, data.settings.hasAiKey) }
     val duty = propertyDuty(p, DutyRates(data.settings.stampDutyPct, data.settings.registrationFeePct))?.takeIf { it.guidelineValue != null }
     return com.hark.sothudiary.domain.propertyScore(check, land, duty, data.settings.scoreWeights)
 }

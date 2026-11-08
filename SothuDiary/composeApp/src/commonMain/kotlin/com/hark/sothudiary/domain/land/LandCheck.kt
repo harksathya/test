@@ -713,7 +713,7 @@ private suspend fun bhuvanWithStatus(points: List<Pair<Double, Double>>): Pair<L
  * AI part – so the screen can show it; every source's outcome is in [LandCheck.status].
  */
 suspend fun runLandCheck(
-    p: Property, apiKey: String, model: String, typeText: String, previous: LandCheck?, now: Long = nowMillis(),
+    p: Property, llm: com.hark.sothudiary.domain.ai.LlmConfig, typeText: String, previous: LandCheck?, now: Long = nowMillis(),
     onPartial: suspend (LandCheck) -> Unit = {},
 ): LandCheck? {
     val lat = p.lat ?: return null
@@ -744,14 +744,14 @@ suspend fun runLandCheck(
             kotlinx.coroutines.withTimeoutOrNull(LandRules.QUICK_SOURCE_MS + 5_000) { bhuvanWithStatus(pts) }
                 ?: (null to SourceStatusLine("ISRO Bhuvan land use", false, "timeout"))
         }
-        val aiJob = if (apiKey.isBlank() || !LandRules.AUTO_AI_SEARCH) null else async {
+        val aiJob = if (!llm.hasKey || !LandRules.AUTO_AI_SEARCH) null else async {
             val rev = runCatching { Geocoder.reverse(lat, lng) }.getOrNull()
             val hint = listOf(p.land.village.ifBlank { p.locality }, p.land.taluk.ifBlank { p.taluk }, p.land.district.ifBlank { p.district })
                 .filter { it.isNotBlank() }.distinct().joinToString(", ").ifBlank { p.address }
             val areaText = if (area > 0) "${dec1(sqmToCents(area))} cents (${dec1(sqmToCents(area) / 100)} acres)" else "size not known"
             val t0 = nowMillis()
             val g = kotlinx.coroutines.withTimeoutOrNull(LandRules.AI_BUDGET_MS) {
-                groundedGenerate(apiKey, model, buildLandPrompt(describePlace(rev, hint), lat, lng, areaText, typeText), now, landSearchQueries(rev, hint))
+                groundedGenerate(llm, buildLandPrompt(describePlace(rev, hint), lat, lng, areaText, typeText), now, landSearchQueries(rev, hint))
             } ?: Grounded.Failed("[other] The AI web search took too long.", 0L, "auto")
             g to (nowMillis() - t0)
         }
@@ -784,10 +784,10 @@ suspend fun runLandCheck(
             else -> c.copy(lulcError = "network")
         }
         val mapLines = osm.attempts.map { it.toStatus() } + elevLine.toStatus() + lulcLine.toStatus()
-        val aiPending = SourceStatusLine("AI web search (Gemini)", null, when {
+        val aiPending = SourceStatusLine("AI web search (${llm.provider.name})", null, when {
             aiJob != null -> "working…"
             !LandRules.AUTO_AI_SEARCH -> "not run automatically (reads third-party pages)"
-            else -> "skipped – no Gemini key (optional)"
+            else -> "skipped – no AI key (optional)"
         }).toStatus()
         // Keep the earlier AI part while the new one is running.
         c = c.copy(ai = sameSpot?.ai, aiFetchedAt = sameSpot?.aiFetchedAt ?: 0, sources = sameSpot?.sources.orEmpty(), aiModel = sameSpot?.aiModel.orEmpty(),
@@ -811,7 +811,7 @@ suspend fun runLandCheck(
             null -> aiPending
             is Grounded.Ok -> SourceStatusLine("AI web search (${ai.model})", c.aiError == null,
                 if (c.aiError == null) "${c.sources.size} sources" else "reply had no readable result", aiMs).toStatus()
-            is Grounded.Failed -> SourceStatusLine("AI web search (Gemini)", false,
+            is Grounded.Failed -> SourceStatusLine("AI web search (${llm.provider.name})", false,
                 com.hark.sothudiary.domain.pricing.shortAiError(ai.error), aiMs, ai.error.take(300)).toStatus()
         }
         c.copy(status = mapLines + aiLine)

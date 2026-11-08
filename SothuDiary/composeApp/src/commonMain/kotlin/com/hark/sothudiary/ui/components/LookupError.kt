@@ -44,7 +44,7 @@ fun lookupErrorMessage(stored: String, retryAt: Long, lang: Lang, now: Long = no
         LookupErrorKind.BAD_KEY -> S.errBadKey
         LookupErrorKind.NETWORK -> S.errNetwork
         LookupErrorKind.MODEL_UNAVAILABLE -> S.errModel
-        LookupErrorKind.NO_KEY -> S.geminiNeedKey
+        LookupErrorKind.NO_KEY -> com.hark.sothudiary.i18n.S5.aiNeedKey
         LookupErrorKind.OTHER -> otherText ?: S.errOther
     }
     return t.of(lang)

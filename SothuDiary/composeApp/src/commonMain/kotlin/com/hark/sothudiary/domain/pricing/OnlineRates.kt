@@ -7,6 +7,14 @@ import com.hark.sothudiary.data.RateLookup
 import com.hark.sothudiary.data.WebSnippet
 import com.hark.sothudiary.data.normalizeGeminiModel
 import com.hark.sothudiary.domain.web.WebSearch
+import com.hark.sothudiary.domain.ai.ApiStyle
+import com.hark.sothudiary.domain.ai.ChatResult
+import com.hark.sothudiary.domain.ai.LlmConfig
+import com.hark.sothudiary.domain.ai.LlmProviders
+import com.hark.sothudiary.domain.ai.chat
+import com.hark.sothudiary.domain.ai.listModels
+import com.hark.sothudiary.domain.ai.normalizeModel
+import com.hark.sothudiary.domain.ai.rankChatModels
 import com.hark.sothudiary.domain.web.citesResult
 import com.hark.sothudiary.domain.web.promptWithResults
 import com.hark.sothudiary.data.newId
@@ -182,12 +190,13 @@ fun isQuotaError(code: Int, status: String, message: String): Boolean =
 
 fun isBadKeyError(code: Int, status: String, message: String): Boolean =
     message.contains("API key not valid", true) || message.contains("API_KEY_INVALID", true) || message.contains("API key expired", true) ||
-        message.contains("invalid api key", true) || (code == 403 && !message.contains("model", true)) || status.equals("UNAUTHENTICATED", true)
+        message.contains("invalid api key", true) || message.contains("invalid x-api-key", true) || message.contains("incorrect api key", true) ||
+        code == 401 || (code == 403 && !message.contains("model", true)) || status.equals("UNAUTHENTICATED", true)
 
 fun isModelUnavailableError(code: Int, message: String): Boolean =
     code == 404 || (code == 400 && message.contains("model", true)) || message.contains("not found", true) ||
         message.contains("not supported", true) || message.contains("no longer", true) || message.contains("deprecated", true) ||
-        message.contains("is not available", true)
+        message.contains("is not available", true) || message.contains("does not exist", true) || message.contains("model_not_found", true)
 
 /** Errors are stored as "[kind] raw API text" so the UI can show a short message and keep the raw text under "Details". */
 fun taggedError(kind: LookupErrorKind, raw: String): String = "[" + kind.name.lowercase() + "] " + raw
@@ -310,31 +319,62 @@ sealed class Grounded {
  * then Flash-Lite, then previews. A model out of (free-tier) quota is skipped and remembered for about an hour, so a
  * Refresh does not hammer it. Every call is grounded with Google Search; there is never an ungrounded call.
  */
-suspend fun groundedGenerate(apiKey: String, model: String, prompt: String, now: Long = nowMillis(), searchQueries: List<String> = emptyList()): Grounded {
-    if (apiKey.isBlank()) return Grounded.Failed("no_key", 0L, "auto")
-    val g = groundedOnly(apiKey, model, prompt, now)
+suspend fun groundedGenerate(llm: LlmConfig, prompt: String, now: Long = nowMillis(), searchQueries: List<String> = emptyList()): Grounded {
+    if (!llm.hasKey) return Grounded.Failed("no_key", 0L, "auto")
+    // 2.5.0 (issue #1): providers without built-in Google Search grounding read the app's own free web search
+    // results instead (the same rules: every number must cite one of those pages).
+    if (!llm.provider.nativeSearch) {
+        val none = Grounded.Failed(taggedError(LookupErrorKind.OTHER, "No web search results to read."), 0L, llm.model)
+        if (searchQueries.isEmpty()) return none
+        return searchFallback(llm, prompt, searchQueries, none, now)
+    }
+    val g = groundedOnly(llm.apiKey, llm.model, prompt, now)
     if (g is Grounded.Ok || searchQueries.isEmpty()) return g
     g as Grounded.Failed
     // A bad key or no internet: a web search does not help.
     val kind = classifyLookupError(g.error)
     if (g.error == "network" || kind == LookupErrorKind.BAD_KEY || kind == LookupErrorKind.NO_KEY || kind == LookupErrorKind.NETWORK) return g
-    return searchFallback(apiKey, model, prompt, searchQueries, g, now)
+    return searchFallback(llm, prompt, searchQueries, g, now)
 }
+
+/** Gemini-only form kept for older callers. */
+suspend fun groundedGenerate(apiKey: String, model: String, prompt: String, now: Long = nowMillis(), searchQueries: List<String> = emptyList()): Grounded =
+    groundedGenerate(LlmConfig(LlmProviders.GEMINI, apiKey, model), prompt, now, searchQueries)
+
+/** One plain (no tools) call to the configured provider. */
+private suspend fun plainCall(llm: LlmConfig, model: String, prompt: String): CallResult =
+    if (llm.provider.style == ApiStyle.GEMINI) callGemini(llm.apiKey, model, plainBody(prompt))
+    else when (val r = chat(llm.provider, llm.apiKey, model, prompt)) {
+        is ChatResult.Ok -> CallResult.Ok(r.text, emptyList())
+        is ChatResult.Fail -> CallResult.Fail(r.e)
+        ChatResult.Offline -> CallResult.Offline
+    }
 
 /**
  * 2.3.0 fallback when grounded calls are not possible (quota / grounding not in the free tier / model gone): our own
  * free web search ([WebSearch]) and an ordinary Gemini call that may only use and cite those results. When Gemini
  * cannot answer either, the search results come back in [Grounded.Failed.snippets] to be shown as they are.
  */
-private suspend fun searchFallback(apiKey: String, model: String, prompt: String, queries: List<String>, grounded: Grounded.Failed, now: Long): Grounded {
+private suspend fun searchFallback(llm: LlmConfig, prompt: String, queries: List<String>, grounded: Grounded.Failed, now: Long): Grounded {
+    val apiKey = llm.apiKey
     val hits = runCatching { WebSearch.searchAll(queries) }.getOrDefault(emptyList())
     if (hits.isEmpty()) return grounded
     val text = promptWithResults(prompt, hits)
-    val body = plainBody(text)
     val models = mutableListOf<String>()
-    normalizeGeminiModel(model).takeIf { it != "auto" }?.let { models += it }
-    cachedPlainModel?.let { if (it !in models) models += it }
-    listGeminiModels(apiKey)?.let { avail -> pickModels(avail).forEach { if (it !in models) models += it } }
+    normalizeModel(llm.provider, llm.model).takeIf { it != "auto" }?.let { models += it }
+    cachedPlainModel[llm.provider.id]?.let { if (it !in models) models += it }
+    var listedNothing = false
+    if (models.size < MAX_PLAIN_CALLS) {
+        val avail = listModels(llm.provider, apiKey)
+        if (avail != null) {
+            val ranked = rankChatModels(llm.provider, avail)
+            listedNothing = ranked.isEmpty()
+            ranked.forEach { if (it !in models) models += it }
+        }
+    }
+    if (models.isEmpty()) return Grounded.Failed(
+        if (listedNothing) taggedError(LookupErrorKind.BAD_KEY, "${llm.provider.name} listed no usable models for this key.") else "network",
+        0L, llm.model, hits)
     var calls = 0
     var last: GeminiError? = null
     var retryDelay: Int? = null
@@ -342,10 +382,10 @@ private suspend fun searchFallback(apiKey: String, model: String, prompt: String
         if (calls >= MAX_PLAIN_CALLS) break
         if (exhaustedAt(apiKey, m, now, "p") != null) continue
         calls++
-        when (val r = callGemini(apiKey, m, body)) {
+        when (val r = plainCall(llm, m, text)) {
             is CallResult.Offline -> return Grounded.Failed("network", 0L, m, hits)
             is CallResult.Ok -> if (r.text.isNotBlank()) {
-                cachedPlainModel = m
+                cachedPlainModel[llm.provider.id] = m
                 return Grounded.Ok(r.text, hits.map { it.url }, "$m (web search)", viaSearch = true, hits = hits)
             }
             is CallResult.Fail -> {
@@ -364,7 +404,7 @@ private suspend fun searchFallback(apiKey: String, model: String, prompt: String
         isBadKeyError(e.code, e.status, e.message) -> taggedError(LookupErrorKind.BAD_KEY, e.message)
         else -> grounded.error
     }
-    return Grounded.Failed(err, retryDelay?.let { now + it * 1000L } ?: grounded.retryAt, grounded.model, hits)
+    return Grounded.Failed(err, retryDelay?.let { now + it * 1000L } ?: grounded.retryAt, if (llm.provider.nativeSearch) grounded.model else (models.firstOrNull() ?: llm.model), hits)
 }
 
 /** The grounded part of [groundedGenerate] (Google Search tool, model fallback). */
@@ -462,8 +502,7 @@ private suspend fun groundedOnly(apiKey: String, model: String, prompt: String, 
  * and keeps only those within [PriceRules.MAX_KM] km by computed distance. Model fallback: [groundedGenerate].
  */
 suspend fun liveLookup(
-    apiKey: String,
-    model: String,
+    llm: LlmConfig,
     lat: Double,
     lng: Double,
     group: Int,
@@ -478,20 +517,21 @@ suspend fun liveLookup(
     val place = describePlace(rev, placeHint)
     // Without a Gemini key there is no online lookup: the price check uses the user's own listings and the saved
     // guideline value (2.4.0 says so plainly instead of silently doing nothing). No price site is fetched automatically.
-    if (apiKey.isBlank()) return LiveLookupResult(
+    val ai = llm.provider.name
+    if (!llm.hasKey) return LiveLookupResult(
         RateLookup(key, lat, lng, group, place, now, error = "no_key", status = listOf(geoLine,
-            com.hark.sothudiary.data.SourceStatus("Gemini + Google Search", null, "skipped – no Gemini key (optional)"))),
+            com.hark.sothudiary.data.SourceStatus(if (llm.provider.nativeSearch) "$ai + Google Search" else "Web search + $ai", null, "skipped – no AI key (optional)"))),
         emptyList(), "no_key")
     val prompt = buildLivePrompt(place, lat, lng, group)
     val t1 = nowMillis()
-    val g = kotlinx.coroutines.withTimeoutOrNull(75_000) { groundedGenerate(apiKey, model, prompt, now, priceSearchQueries(rev, placeHint, group)) }
+    val g = kotlinx.coroutines.withTimeoutOrNull(75_000) { groundedGenerate(llm, prompt, now, priceSearchQueries(rev, placeHint, group)) }
         ?: Grounded.Failed("[other] The AI search took too long (75 s).", 0L, "auto")
     val aiMs = nowMillis() - t1
     return when (g) {
         is Grounded.Ok -> {
             val (out, skipped) = placeComparables(g.text, g.sources, lat, lng, group, rev, key, now, if (g.viaSearch) g.hits else null)
             val status = listOf(geoLine, com.hark.sothudiary.data.SourceStatus(
-                if (g.viaSearch) "Web search + Gemini (${g.model})" else "Gemini + Google Search (${g.model})", true,
+                if (g.viaSearch) "Web search + $ai (${g.model})" else "$ai + Google Search (${g.model})", true,
                 "${out.size} rates kept within ${PriceRules.MAX_KM.toInt()} km, $skipped dropped", aiMs, "sources: " + g.sources.take(6).joinToString(" ")))
             LiveLookupResult(RateLookup(key, lat, lng, group, place, now, out.size, skipped, g.model, null, g.sources.take(12), viaSearch = g.viaSearch,
                 // Nothing usable from the AI: keep the search results so they can still be read.
@@ -500,7 +540,7 @@ suspend fun liveLookup(
         }
         is Grounded.Failed -> LiveLookupResult(
             RateLookup(key, lat, lng, group, place, now, model = g.model, error = g.error, retryAt = g.retryAt, snippets = g.snippets.take(8),
-                status = listOf(geoLine, com.hark.sothudiary.data.SourceStatus("Gemini (${g.model})", false, shortAiError(g.error), aiMs, g.error.take(300)))),
+                status = listOf(geoLine, com.hark.sothudiary.data.SourceStatus("$ai (${g.model})", false, shortAiError(g.error), aiMs, g.error.take(300)))),
             emptyList(), g.error,
         )
     }
@@ -508,10 +548,10 @@ suspend fun liveLookup(
 
 /** 2.4.0: one short line for an AI error (Status panel). */
 fun shortAiError(e: String): String = when (classifyLookupError(e)) {
-    LookupErrorKind.NO_KEY -> "no Gemini key"
+    LookupErrorKind.NO_KEY -> "no AI key"
     LookupErrorKind.NETWORK -> "no internet / timeout"
     LookupErrorKind.QUOTA -> "free quota used up for now"
-    LookupErrorKind.BAD_KEY -> "the Gemini key was refused"
+    LookupErrorKind.BAD_KEY -> "the AI key was refused"
     LookupErrorKind.MODEL_UNAVAILABLE -> "model not available for this key"
     else -> e.substringAfter("] ").take(90)
 }
@@ -582,7 +622,7 @@ private suspend fun placeComparables(
 /** The model that last worked in this app session (models retire, so never hard-code one). */
 private var cachedBestModel: String? = null
 /** 2.3.0: the model that last answered a plain (web-search) call. */
-private var cachedPlainModel: String? = null
+private val cachedPlainModel = mutableMapOf<String, String>()
 
 /** Model ids this key can call with generateContent, or null on a network failure. */
 private suspend fun listGeminiModels(apiKey: String): List<String>? {
