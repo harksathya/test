@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.6.1
+# Sothu Diary (சொத்து டைரி) – v2.6.2
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -6,6 +6,12 @@ the documents you have verified – and get a detailed, explainable **price chec
 rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-tap **த / EN**).
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
+
+## What's new in v2.6.2
+
+- One Overpass server may now take up to 40 s to answer (was 25 s). The 2.6.1 CI probe showed the VK Maps mirror needing
+  14–18 s for each single layer, so the combined water + roads + land-use query was always cut off at 25 s.
+- The CI probe runs the land check's own map-data call first and is capped at 5 minutes (it no longer delays the APK).
 
 ## What's new in v2.6.1
 

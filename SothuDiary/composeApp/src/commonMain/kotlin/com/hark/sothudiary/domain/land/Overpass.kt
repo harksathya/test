@@ -490,7 +490,7 @@ private suspend fun overpassCall(url: String, query: String, timeoutMs: Int): co
  * time is left, the first one is asked once more after a short back-off. Each try gets at most [perTryMs].
  */
 suspend fun fetchGroup(
-    query: String, index: Int, label: String, budgetMs: Long = LandRules.OSM_BUDGET_MS, hedgeMs: Long = 9_000, perTryMs: Int = 25_000,
+    query: String, index: Int, label: String, budgetMs: Long = LandRules.OSM_BUDGET_MS, hedgeMs: Long = 9_000, perTryMs: Int = OVERPASS_TRY_MS,
     endpoints: List<String> = OVERPASS_ENDPOINTS,
     attempt: suspend (String, String, Int, String) -> Pair<OverpassResult, SourceStatusLine> = ::overpassAttempt,
 ): Pair<OverpassResult, List<SourceStatusLine>> {
@@ -554,6 +554,12 @@ suspend fun fetchGroup(
 
 /** 2.6.0: extra rounds after every server failed ([fetchGroup]). */
 const val OVERPASS_RETRIES = 2
+
+/**
+ * 2.6.2: longest wait for one server's answer (was 25 s). CI probe 2026-11-08: the VK Maps mirror needed 14–18 s for
+ * each single layer, so the combined (water + roads + land use) query was cut off at 25 s every time.
+ */
+const val OVERPASS_TRY_MS = 40_000
 
 /** Kept for older callers: one query raced across the servers. */
 suspend fun fetchLayer(query: String, index: Int, budgetMs: Long = 40_000, hedgeMs: Long = 7_000): OverpassResult =
