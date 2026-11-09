@@ -221,6 +221,9 @@ expect suspend fun httpCall(
 /** Downloads a file (e.g. a post thumbnail). Null on errors. */
 expect suspend fun httpBytes(url: String, userAgent: String, maxBytes: Int = 8_000_000): ByteArray?
 
+/** 2.7.0: unpacks gzip data (a gzipped map tile); null when it is not valid gzip. */
+expect fun ungzipOrNull(bytes: ByteArray): ByteArray?
+
 /**
  * 2.4.0: an identifying User-Agent WITH a contact URL. Since April 2026 overpass-api.de answers HTTP 406 to clients whose
  * User-Agent does not identify them with a way to reach the author – the 2.3 value ("SothuDiary/2.3 (com.hark.sothudiary;

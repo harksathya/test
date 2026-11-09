@@ -568,22 +568,69 @@ suspend fun fetchLayer(query: String, index: Int, budgetMs: Long = 40_000, hedge
 /**
  * All layers within one time budget, as the two [OsmGroup] queries in parallel (each starting on a different server);
  * partial results are kept: a failed group marks only its own layers as failed.
+ *
+ * 2.7.0: [coreFallback] (the land check passes [fetchTileCore]) is a second source for the CORE layers. When Overpass has
+ * not answered the CORE group within [VectorTileRules.HEDGE_MS] (or failed sooner), the fallback is fetched; once it has
+ * the data, Overpass gets [VectorTileRules.OVERPASS_GRACE_MS] more and is then stopped. Overpass's answer is still
+ * preferred whenever it comes (it also has proposed roads); the fallback fills only CORE layers Overpass did not deliver.
  */
-suspend fun fetchOsmLayers(queries: Map<String, String>, budgetMs: Long = LandRules.OSM_BUDGET_MS): LayeredOsm {
+suspend fun fetchOsmLayers(
+    queries: Map<String, String>, budgetMs: Long = LandRules.OSM_BUDGET_MS,
+    coreFallback: (suspend () -> Pair<Map<String, OverpassResult>, List<SourceStatusLine>>)? = null,
+    hedgeMs: Long = VectorTileRules.HEDGE_MS, graceMs: Long = VectorTileRules.OVERPASS_GRACE_MS,
+): LayeredOsm {
     val groups = groupQueries(queries)
+    val coreLabel = "(water, roads, land use)"
+    var fallback: Pair<Map<String, OverpassResult>, List<SourceStatusLine>>? = null
+    var coreStopped = false
     val answers = kotlinx.coroutines.coroutineScope {
-        groups.entries.mapIndexed { i, (g, q) -> g to async { fetchGroup(q, i, if (g == OsmGroup.CORE) "(water, roads, land use)" else "(amenities, rail, forest)", budgetMs) } }
-            .associate { (g, d) -> g to d.await() }
+        val deferred = groups.entries.mapIndexed { i, (g, q) ->
+            g to async { fetchGroup(q, i, if (g == OsmGroup.CORE) coreLabel else "(amenities, rail, forest)", budgetMs) }
+        }.toMap()
+        val core = deferred[OsmGroup.CORE]
+        var coreAns: Pair<OverpassResult, List<SourceStatusLine>>? = null
+        if (coreFallback != null && core != null) {
+            val early = kotlinx.coroutines.withTimeoutOrNull(hedgeMs) { core.await() }
+            coreAns = early
+            if (early == null || early.first.error != null) {
+                fallback = try {
+                    coreFallback()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    OsmGroup.layers.getValue(OsmGroup.CORE).associateWith { OverpassResult(emptyList(), "[other] ${VectorTileRules.SOURCE}: ${e.message}") } to
+                        listOf(SourceStatusLine(VectorTileRules.SOURCE, false, e.message ?: "error"))
+                }
+                val tilesOk = fallback?.first?.values?.any { it.error == null } == true
+                if (early == null) {
+                    coreAns = if (tilesOk) {
+                        kotlinx.coroutines.withTimeoutOrNull(graceMs) { core.await() } ?: run { core.cancel(); coreStopped = true; null }
+                    } else core.await()
+                }
+            }
+        }
+        deferred.mapValues { (g, d) -> if (g == OsmGroup.CORE && coreFallback != null) coreAns else d.await() }
     }
     val perLayer = LinkedHashMap<String, OverpassResult>()
-    for ((g, ans) in answers) {
+    for (g in groups.keys) {
+        val ans = answers[g]
         val layers = OsmGroup.layers[g].orEmpty()
         layers.forEachIndexed { i, layer ->
-            // The group's elements are given once (to its first layer); its other layers count as loaded too.
-            perLayer[layer] = if (ans.first.error != null) ans.first else if (i == 0) ans.first else OverpassResult(emptyList())
+            val r = when {
+                ans == null -> OverpassResult(emptyList(), "[other] Overpass: stopped")
+                // The group's elements are given once (to its first layer); its other layers count as loaded too.
+                ans.first.error != null -> ans.first
+                i == 0 -> ans.first
+                else -> OverpassResult(emptyList())
+            }
+            val alt = fallback?.first?.get(layer)
+            perLayer[layer] = if (r.error != null && alt != null && alt.error == null) alt else r
         }
     }
-    return mergeLayers(perLayer).copy(attempts = answers.values.flatMap { it.second })
+    val lines = answers.values.filterNotNull().flatMap { it.second } +
+        (if (coreStopped) listOf(SourceStatusLine("Overpass $coreLabel", false, "stopped – the map tiles answered first")) else emptyList()) +
+        fallback?.second.orEmpty()
+    return mergeLayers(perLayer).copy(attempts = lines)
 }
 
 /** Open-Meteo elevation (Copernicus 90 m DEM, free, no key) for up to 100 points; null on any error. */

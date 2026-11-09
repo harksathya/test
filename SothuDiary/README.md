@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.6.2
+# Sothu Diary (சொத்து டைரி) – v2.7.0
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -6,6 +6,20 @@ the documents you have verified – and get a detailed, explainable **price chec
 rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-tap **த / EN**).
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
+
+## What's new in v2.7.0
+
+- **Land check map data no longer depends on the Overpass servers alone.** The 2.6.2 CI probe still had all three free
+  Overpass servers failing (overpass-api.de refusing the network with 406, the VK Maps mirror answering 504 "busy",
+  private.coffee not answering), so water, roads and land use came back empty. Now, when Overpass has not answered the
+  water / roads / land-use part within 20 s, the app also reads the same OpenStreetMap data from **OpenFreeMap vector
+  tiles** (openfreemap.org – free, no key, no request limit; static tiles that do not get "busy"): water bodies,
+  streams and wetlands, every road near the plot, main roads and roads under construction within ~5 km, and the land
+  use / land cover under the pin. Overpass's answer is still used whenever it comes (it also knows proposed roads).
+- About 0.5–1 MB of tiles per check, only when Overpass is slow; tiles are kept in memory for repeat checks.
+- The tiles do not have power lines, proposed roads or the 10 km protected-area search, so amenities / utilities /
+  rail / protected areas still come from Overpass only and stay *Unknown* when it fails.
+- The Status / நிலை panel shows an "OpenFreeMap map tiles" line; the CI probe prints the tile result too.
 
 ## What's new in v2.6.2
 

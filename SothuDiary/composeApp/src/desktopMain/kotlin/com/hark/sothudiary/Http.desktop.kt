@@ -123,3 +123,8 @@ actual suspend fun httpBytes(url: String, userAgent: String, maxBytes: Int): Byt
         }
     }.getOrNull()
 }
+
+/** 2.7.0: unpacks gzip data (a gzipped map tile); null when it is not valid gzip. */
+actual fun ungzipOrNull(bytes: ByteArray): ByteArray? = runCatching {
+    java.util.zip.GZIPInputStream(bytes.inputStream()).use { it.readNBytesCompat(16_000_000) }
+}.getOrNull()

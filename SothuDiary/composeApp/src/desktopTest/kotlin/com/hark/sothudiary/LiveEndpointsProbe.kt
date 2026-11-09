@@ -56,9 +56,18 @@ class LiveEndpointsProbe {
         val groups = groupQueries(layers)
         val st = httpCall("https://overpass-api.de/api/status", headers = mapOf("User-Agent" to APP_USER_AGENT), timeoutMs = 15_000)
         out("overpass-api.de /api/status: HTTP ${st.code} ${st.error ?: ""} ${st.body.orEmpty().replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").take(160)}")
-        // The land check's own call: both groups raced across all servers, with the app's budget and retries.
+        // 2.7.0: the OpenFreeMap vector-tile source for water / roads / land use on its own.
+        val tt = System.currentTimeMillis()
+        val (tiles, tileLines) = com.hark.sothudiary.domain.land.fetchTileCore(lat, lng, 1000)
+        out("openfreemap tiles (${(System.currentTimeMillis() - tt) / 1000} s): " +
+            tiles.entries.joinToString(" ") { (l, r) -> "$l=" + (r.error ?: "${r.elements.size}") } + " | " +
+            tileLines.joinToString("; ") { "${it.reason} ${it.ms} ms" })
+        tiles.values.flatMap { it.elements }.mapNotNull { e -> e.tags["name"]?.let { n -> (e.tags["highway"] ?: e.tags["water"] ?: e.tags["waterway"] ?: e.tags["landuse"] ?: "") + ":" + n } }
+            .distinct().take(8).forEach { out("   $it") }
+        // The land check's own call: both groups raced across all servers, with the app's budget and retries,
+        // and (2.7.0) the map tiles as the second source for the core layers – exactly as on the phone.
         val t0 = System.currentTimeMillis()
-        val all = com.hark.sothudiary.domain.land.fetchOsmLayers(layers)
+        val all = com.hark.sothudiary.domain.land.fetchOsmLayers(layers, coreFallback = { com.hark.sothudiary.domain.land.fetchTileCore(lat, lng, 1000) })
         out("land check map data (app path, ${(System.currentTimeMillis() - t0) / 1000} s): ok=${all.okLayers} failed=${all.failed.keys} elements=${all.elements.size} | " +
             all.attempts.joinToString("; ") { "${it.source.substringAfter("· ")}: ${it.reason} ${it.ms} ms" })
         // overpass-api.de blocks some cloud networks outright (status page 406 too): then its tries are skipped here.

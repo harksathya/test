@@ -743,7 +743,7 @@ suspend fun runLandCheck(
         val osmJob = async {
             val radius = maxOf(LandRules.WATER_RADIUS_M, (kotlin.math.sqrt(area / PI) + 300).toInt())
             try {
-                fetchOsmLayers(buildLayerQueries(lat, lng, radius), LandRules.OSM_BUDGET_MS)
+                fetchOsmLayers(buildLayerQueries(lat, lng, radius), LandRules.OSM_BUDGET_MS, coreFallback = { fetchTileCore(lat, lng, radius) })
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
