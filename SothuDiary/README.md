@@ -7,6 +7,8 @@ rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-t
 
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
 
+**Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
+
 ## What's new in v2.7.0
 
 - **Land check map data no longer depends on the Overpass servers alone.** The 2.6.2 CI probe still had all three free
