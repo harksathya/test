@@ -7,6 +7,7 @@ import com.hark.sothudiary.domain.land.VectorTileRules
 import com.hark.sothudiary.domain.land.fetchGroup
 import com.hark.sothudiary.domain.land.httpCodeOf
 import com.hark.sothudiary.domain.land.overpassRetryable
+import com.hark.sothudiary.domain.land.stopsAllServers
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,5 +49,19 @@ class V271Test {
         assertTrue(VectorTileRules.HEDGE_MS <= 5_000L)
         assertTrue(VectorTileRules.HEDGE_MS + VectorTileRules.OVERPASS_GRACE_MS <= 10_000L)
         assertEquals(2, OVERPASS_SLOTS_PER_SERVER)
+    }
+
+    /** 2.7.2 regression: a 406 from one server (User-Agent policy) must not stop the other servers. */
+    @Test fun refusedByOneServerStillAsksTheNext() = runBlocking {
+        val calls = mutableListOf<String>()
+        val (res, _) = fetchGroup("q", 0, "(test)", budgetMs = 10_000, hedgeMs = 2_000, endpoints = listOf("https://a/api", "https://b/api"),
+            attempt = { url, _, _, _ ->
+                calls += url
+                if (url.contains("//a/")) OverpassResult(emptyList(), "[other] Overpass HTTP 406") to SourceStatusLine("Overpass · a", false, "HTTP 406", detail = "POST $url · HTTP 406")
+                else OverpassResult(emptyList()) to SourceStatusLine("Overpass · b", true, "0 map features", detail = "POST $url · HTTP 200")
+            })
+        assertNull(res.error)
+        assertEquals(listOf("https://a/api", "https://b/api"), calls)
+        assertTrue(stopsAllServers(400) && !stopsAllServers(406) && !stopsAllServers(504) && !stopsAllServers(null))
     }
 }

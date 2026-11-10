@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 15:45 IST, by Hark (project agent), for the v2.7.1 commit (versionCode 16).
+Last updated: 2026-11-10 15:55 IST, by Hark (project agent), for the v2.7.2 commit (versionCode 17).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -32,11 +32,16 @@ Last updated: 2026-11-10 15:45 IST, by Hark (project agent), for the v2.7.1 comm
 - v2.7.0 `a1f422d` – land check CORE layers (water, roads, land use) fall back to OpenFreeMap vector tiles
   (`domain/land/VectorTiles.kt`, `fetchOsmLayers(coreFallback=…)` in `Overpass.kt`, `V270Test`). CI probe on it: all
   7 layers OK, 277 elements, map step 34 s.
-- v2.7.1 (this commit; desktop tests pass locally, CI pending at time of writing) – (1) tiles asked after 3 s
+- v2.7.1 `f7ec265` (CI run 42796600492 success) – (1) tiles asked after 3 s
   (`VectorTileRules.HEDGE_MS`, Overpass grace 4 s; were 20 s + 5 s); (2) TNREGINET page: after 25 s without a load
   or on a page error, a banner with Reload / Open in browser (`ui/screens/GuidelineDuty.kt`, `i18n/Strings271.kt`);
   (3) no retry after HTTP 400 (`httpCodeOf` + `overpassRetryable` in `fetchGroup`); (4) `OVERPASS_SLOTS_PER_SERVER = 2`
   (was 1); (5) © OpenStreetMap (ODbL) / OpenFreeMap credit on `LandCheckScreen.kt`. Tests `V271Test`.
+  CI probe on 2.7.1: CORE from tiles, map step 18 s – but EXTRA failed because of a bug in (3), fixed in 2.7.2.
+- v2.7.2 (this commit; desktop tests pass locally, CI pending at time of writing) – the 2.7.1 stop rule used
+  `overpassRetryable`, which is false for 406, so one server's 406 stopped the whole group. Now `stopsAllServers(code)`
+  is true only for 400. Regression test `V271Test.refusedByOneServerStillAsksTheNext`. Next agent: confirm in the CI
+  probe line `land check map data (app path, …)` that amenities/utilities/rail/protected are back in ok=[…].
 
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,

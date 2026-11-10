@@ -368,6 +368,9 @@ fun mergeLayers(results: Map<String, OverpassResult>): LayeredOsm {
 /** Should a failed Overpass answer be tried again (on another server)? 429 / 5xx / timeouts yes, 400 (bad query) no. */
 fun overpassRetryable(code: Int?): Boolean = code == null || code == 429 || code == 408 || code >= 500 || code == 0
 
+/** An answer that every server would give the same way (bad query): no point asking another server. */
+fun stopsAllServers(code: Int?): Boolean = code == 400
+
 /** HTTP code in a status line's detail ("POST … · HTTP 400 · …"); null when there is none (network error, test line). */
 fun httpCodeOf(line: SourceStatusLine): Int? =
     Regex("HTTP (-?\\d+)").find(line.detail)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
@@ -534,7 +537,9 @@ suspend fun fetchGroup(
                 }
                 if (winner.isCompleted) break
                 // 2.7.1: a rejected query (HTTP 400) fails the same way on every server – stop instead of retrying.
-                if (r != null && !overpassRetryable(httpCodeOf(r.second))) break
+                // 2.7.2: only 400. A 406 is one server refusing this app (overpass-api.de's User-Agent policy) – the other
+                // servers must still be asked (2.7.1 stopped there, so the EXTRA layers failed in the CI probe).
+                if (r != null && stopsAllServers(httpCodeOf(r.second))) break
                 if (next < order.size) launchOn(order[next++])
                 else if (finished >= next) {
                     // 2.6.0: every server failed (CI probe 2026-11-08: the free mirrors answered 504 "busy" within a

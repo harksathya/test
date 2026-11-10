@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.7.1
+# Sothu Diary (சொத்து டைரி) – v2.7.2
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -8,6 +8,12 @@ rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-t
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
+
+## What's new in v2.7.2
+
+- **Fix (2.7.1 regression):** when overpass-api.de refused the app (HTTP 406, User-Agent policy), 2.7.1 stopped asking
+  the other Overpass servers, so amenities, utilities, rail and protected areas came back *Unknown* (CI probe: map step
+  18 s, EXTRA layers failed). Now only a rejected query (HTTP 400) stops the search; a 406 moves on to the next server.
 
 ## What's new in v2.7.1
 
