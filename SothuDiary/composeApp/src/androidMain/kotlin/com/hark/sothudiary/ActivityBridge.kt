@@ -9,4 +9,8 @@ interface ActivityBridge {
     fun requestPermissions(perms: Array<String>, cb: (Boolean) -> Unit)
     fun openDocument(mimeTypes: Array<String>, cb: (Uri?) -> Unit)
     fun startForResult(intent: Intent, cb: (Int, Intent?) -> Unit)
+    /** 3.0.0: Google sign-in / consent screen (a PendingIntent from the AuthorizationClient). */
+    fun startIntentSender(sender: android.content.IntentSender, cb: (Int, Intent?) -> Unit)
+    /** 3.0.0: the running Activity (Google Identity Services needs it for its screens). */
+    val activity: android.app.Activity
 }

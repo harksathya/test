@@ -91,7 +91,32 @@ interface PlatformActions {
      * Downloads often hand .sothu files over as application/octet-stream) and returns its text, null when cancelled.
      */
     fun pickPropertyFile(onResult: (String?) -> Unit) = pickTextFile(onResult)
+
+    /** 3.0.0: Google Drive backup (Android, Google Identity Services). False on desktop. */
+    val driveSupported: Boolean get() = false
+
+    /**
+     * 3.0.0: asks Google for an access token for the hidden Drive app folder (scope drive.appdata). [interactive] =
+     * may show the Google account / consent screen; false = only a token that needs no screen (automatic backup).
+     * The token is used for one backup / restore and never saved.
+     */
+    fun driveAuthorize(interactive: Boolean, onResult: (DriveAuth) -> Unit) { onResult(DriveAuth(error = "unsupported")) }
+
+    /** 3.0.0: tells Google an access token was refused (HTTP 401) so the next [driveAuthorize] gets a fresh one. */
+    fun driveClearToken(token: String, onDone: () -> Unit) { onDone() }
+
+    /** 3.0.0: bytes of a file the app stores in [folder] ("images", "voice", "music"), null when missing. */
+    fun readAppFile(folder: String, fileName: String): ByteArray? = if (folder == "images") readStoredFile(fileName) else null
+
+    /** 3.0.0: writes a file restored from Drive into [folder]; false on failure. */
+    fun writeAppFile(folder: String, fileName: String, bytes: ByteArray): Boolean = false
+
+    /** 3.0.0: true when [folder]/[fileName] exists in app storage. */
+    fun appFileExists(folder: String, fileName: String): Boolean = readAppFile(folder, fileName) != null
 }
+
+/** 3.0.0: result of [PlatformActions.driveAuthorize]: a token, or why there is none ([needsScreen] = sign-in screen needed). */
+data class DriveAuth(val token: String? = null, val error: String? = null, val needsScreen: Boolean = false, val cancelled: Boolean = false)
 
 /** 2.4.0: what goes on a "Share as image" card. Lines are already in the user's language. */
 data class ShareCard(
@@ -235,6 +260,18 @@ expect suspend fun httpCall(
 
 /** Downloads a file (e.g. a post thumbnail). Null on errors. */
 expect suspend fun httpBytes(url: String, userAgent: String, maxBytes: Int = 8_000_000): ByteArray?
+
+/** 3.0.0: result of [httpUploadBytes] / [httpDownloadBytes]: code (-1 = no answer, see [error]) and the body. */
+class BytesResult(val code: Int, val body: ByteArray?, val error: String? = null) {
+    val ok: Boolean get() = code in 200..299
+    val text: String get() = body?.decodeToString().orEmpty()
+}
+
+/** 3.0.0: sends [body] bytes (Drive file upload) and reads the answer as bytes. Never throws. */
+expect suspend fun httpUploadBytes(url: String, method: String, headers: Map<String, String>, body: ByteArray?, timeoutMs: Int = 120_000): BytesResult
+
+/** 3.0.0: downloads a file (Drive alt=media) with headers; up to [maxBytes]. Never throws. */
+expect suspend fun httpDownloadBytes(url: String, headers: Map<String, String>, maxBytes: Int = 64_000_000, timeoutMs: Int = 120_000): BytesResult
 
 /** 2.7.0: unpacks gzip data (a gzipped map tile); null when it is not valid gzip. */
 expect fun ungzipOrNull(bytes: ByteArray): ByteArray?

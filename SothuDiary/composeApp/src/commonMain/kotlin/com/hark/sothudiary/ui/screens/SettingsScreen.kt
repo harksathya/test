@@ -62,7 +62,7 @@ import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.domain.dec
 
-const val APP_VERSION = "2.9.1"
+const val APP_VERSION = "3.0.0"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -103,6 +103,9 @@ fun SettingsScreen(ctx: AppContext) {
                     }
                 }
             }
+
+            // 3.0.0: Google Drive backup / sync.
+            DriveBackupCard(ctx)
 
             SectionCard(title = S.appearance.s()) {
                 ChoiceChips(ThemeMode.entries, data.settings.theme, { it.tr().s() }) { ctx.repo.setTheme(it) }

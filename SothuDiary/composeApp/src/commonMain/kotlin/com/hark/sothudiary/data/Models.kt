@@ -502,6 +502,12 @@ data class AppSettings(
     val registrationFeePct: Double = 2.0,
     /** 2.4.0: weights of the property score factors (0 = ignore a factor). */
     val scoreWeights: ScoreWeights = ScoreWeights(),
+    /** 3.0.0: the Gmail whose Drive app folder holds the backup (blank = Drive backup not connected). No token is saved. */
+    val driveAccount: String = "",
+    /** 3.0.0: when the last Drive backup finished (epoch ms), 0 = never. */
+    val driveLastBackupAt: Long = 0,
+    /** 3.0.0: back up automatically 30 s after a change while connected. */
+    val driveAuto: Boolean = true,
 )
 
 /** 2.4.0: relative weights of the 0–100 property score (Settings). Missing factors are skipped, not counted as zero. */

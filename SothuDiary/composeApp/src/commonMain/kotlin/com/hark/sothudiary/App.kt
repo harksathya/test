@@ -180,6 +180,16 @@ fun App(
         }
     }
 
+    // 3.0.0: automatic Drive backup 30 s after the last change (a new change restarts the wait). The key leaves out the
+    // last-backup time, so finishing a backup does not start another one.
+    val driveKey = repo.data.let { it.copy(settings = it.settings.copy(driveLastBackupAt = 0)) }
+    LaunchedEffect(driveKey) {
+        val s = repo.data.settings
+        if (!platform.driveSupported || s.driveAccount.isBlank() || !s.driveAuto || s.driveLastBackupAt == 0L) return@LaunchedEffect
+        kotlinx.coroutines.delay(com.hark.sothudiary.domain.drive.DriveRules.AUTO_DELAY_MS)
+        runCatching { com.hark.sothudiary.domain.drive.DriveSync.backup(repo, platform, interactive = false) }
+    }
+
     // Soft background music (Android): follows the saved settings; the top-bar note icon toggles it.
     val st = repo.data.settings
     LaunchedEffect(st.bgmEnabled, st.bgmVolume, st.bgmFile) { platform.music.configure(st.bgmEnabled, st.bgmVolume, st.bgmFile) }

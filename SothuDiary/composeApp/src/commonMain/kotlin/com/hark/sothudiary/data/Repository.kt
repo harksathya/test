@@ -412,6 +412,30 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
 
     fun deleteOnlineRate(id: String) = update { d -> d.copy(onlineRates = d.onlineRates.filterNot { it.id == id }) }
 
+    /** 3.0.0: Drive backup account / last backup time / automatic backup switch. */
+    fun setDrive(account: String = data.settings.driveAccount, lastBackupAt: Long = data.settings.driveLastBackupAt, auto: Boolean = data.settings.driveAuto) = update { d ->
+        d.copy(settings = d.settings.copy(driveAccount = account, driveLastBackupAt = lastBackupAt, driveAuto = auto))
+    }
+
+    /** 3.0.0: parses a backup file (Drive or export) without applying it; null when it is not valid. */
+    fun parseBackup(text: String): AppData? = runCatching { migrate(json.decodeFromString(AppData.serializer(), text)) }.getOrNull()
+
+    /**
+     * 3.0.0: applies a Drive backup. USE_DRIVE replaces the phone data, MERGE joins both by id (newest property wins,
+     * see [com.hark.sothudiary.domain.drive.mergeAppData]). This phone's language and Drive connection are kept.
+     */
+    fun applyDriveBackup(drive: AppData, choice: com.hark.sothudiary.domain.drive.RestoreChoice) = update { d ->
+        val base = when (choice) {
+            com.hark.sothudiary.domain.drive.RestoreChoice.KEEP_PHONE -> d
+            com.hark.sothudiary.domain.drive.RestoreChoice.USE_DRIVE -> drive
+            com.hark.sothudiary.domain.drive.RestoreChoice.MERGE -> com.hark.sothudiary.domain.drive.mergeAppData(d, drive)
+        }
+        base.copy(settings = base.settings.copy(
+            lang = d.settings.lang,
+            driveAccount = d.settings.driveAccount, driveLastBackupAt = d.settings.driveLastBackupAt, driveAuto = d.settings.driveAuto,
+        ))
+    }
+
     fun exportJson(): String = json.encodeToString(AppData.serializer(), data)
 
     /** Replaces all data with the imported file. Returns false if the text is not a valid backup. */

@@ -40,6 +40,21 @@ class MainActivity : ComponentActivity(), ActivityBridge {
         cb?.invoke(r.resultCode, r.data)
     }
 
+    private var pendingSender: ((Int, Intent?) -> Unit)? = null
+    private val senderLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        val cb = pendingSender
+        pendingSender = null
+        cb?.invoke(r.resultCode, r.data)
+    }
+
+    override val activity: android.app.Activity get() = this
+
+    override fun startIntentSender(sender: android.content.IntentSender, cb: (Int, Intent?) -> Unit) {
+        pendingSender = cb
+        runCatching { senderLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(sender).build()) }
+            .onFailure { pendingSender = null; cb(RESULT_CANCELED, null) }
+    }
+
     override fun requestPermissions(perms: Array<String>, cb: (Boolean) -> Unit) {
         pendingPermission = cb
         runCatching { permissionLauncher.launch(perms) }.onFailure { pendingPermission = null; cb(false) }

@@ -128,3 +128,43 @@ actual suspend fun httpBytes(url: String, userAgent: String, maxBytes: Int): Byt
 actual fun ungzipOrNull(bytes: ByteArray): ByteArray? = runCatching {
     java.util.zip.GZIPInputStream(bytes.inputStream()).use { it.readNBytesCompat(16_000_000) }
 }.getOrNull()
+
+
+/**
+ * 3.0.0: byte uploads / downloads for Google Drive backup. PATCH is not supported by HttpURLConnection, so it is sent
+ * as POST with X-HTTP-Method-Override (Google APIs accept it).
+ */
+private fun bytesCall(url: String, method: String, headers: Map<String, String>, body: ByteArray?, maxBytes: Int, timeoutMs: Int): BytesResult {
+    return try {
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 15_000
+            c.readTimeout = timeoutMs
+            c.instanceFollowRedirects = true
+            if (method == "PATCH") {
+                c.requestMethod = "POST"
+                c.setRequestProperty("X-HTTP-Method-Override", "PATCH")
+            } else c.requestMethod = method
+            c.setRequestProperty("User-Agent", APP_USER_AGENT)
+            headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
+            if (body != null) {
+                c.doOutput = true
+                c.setFixedLengthStreamingMode(body.size)
+                c.outputStream.use { it.write(body) }
+            }
+            val code = c.responseCode
+            val stream = if (code in 200..299) c.inputStream else c.errorStream
+            BytesResult(code, stream?.use { it.readNBytesCompat(maxBytes) })
+        } finally {
+            c.disconnect()
+        }
+    } catch (e: Throwable) {
+        BytesResult(-1, null, httpErrorText(e))
+    }
+}
+
+actual suspend fun httpUploadBytes(url: String, method: String, headers: Map<String, String>, body: ByteArray?, timeoutMs: Int): BytesResult =
+    withContext(Dispatchers.IO) { bytesCall(url, method, headers, body, 4_000_000, timeoutMs) }
+
+actual suspend fun httpDownloadBytes(url: String, headers: Map<String, String>, maxBytes: Int, timeoutMs: Int): BytesResult =
+    withContext(Dispatchers.IO) { bytesCall(url, "GET", headers, null, maxBytes, timeoutMs) }

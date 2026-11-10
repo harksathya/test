@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 19:50 IST, by Hark (project agent). main = v2.9.1 `ab41b61` (CI 42826017808 success). This commit adds only the Google Drive plan below.
+Last updated: 2026-11-10 20:55 IST, by Hark (project agent). main = v3.0.0 (this commit; CI pending at time of writing). Previous: v2.9.1 `ab41b61` (CI 42826017808 success).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -67,7 +67,7 @@ Last updated: 2026-11-10 19:50 IST, by Hark (project agent). main = v2.9.1 `ab41
   `DocumentsScreen.EcChatCard`, `i18n/Strings290.kt` (S9), V290Test. Property delete removes document files.
   UNVERIFIED on phone: PdfRenderer on scanned TN EC PDFs, Gemini free-tier rate limit with many 2-page calls
   (a 30-page EC = 15 calls), answer quality in Tamil.
-- NEXT (agreed with owner 2026-11-10): Google Drive backup/sync to the user's own Drive (Google sign-in,
+- (Done in v3.0.0, see below) agreed with owner 2026-11-10: Google Drive backup/sync to the user's own Drive (Google sign-in,
   appDataFolder) so the same Gmail restores properties + documents on a new phone; owner must create a Google Cloud
   OAuth Android client (package com.hark.sothudiary? check applicationId + release SHA-1 from CI keystore). Then: a
   clear "AI key" card in Settings (masked key, Test, Change) – today it is under Settings → Online services.
@@ -78,35 +78,31 @@ Last updated: 2026-11-10 19:50 IST, by Hark (project agent). main = v2.9.1 `ab41
   every batch and continue from the last page, "Ask again" button (`Repository.removeLastDocChat`), page JPEG 1400 px / 80.
   Still unknown why one 2-page call took 123 s (slow upload or Gemini thinking); if it repeats, try 1 page per call.
 
-## NEXT: Google Drive backup / sync (v3.0.0) – spec, nothing implemented yet
-Goal (owner, 2026-11-10): same Gmail on a new phone → all properties, photos, voice notes and documents come back.
-- Storage: the user's own Drive, hidden app folder `appDataFolder`, scope `https://www.googleapis.com/auth/drive.appdata`.
-  No server, no client secret.
-- Owner setup (Google Cloud console, one time): project → enable "Google Drive API" → OAuth consent screen (External,
-  testing; add tester Gmails) → Credentials → OAuth client ID, type Android, package `com.hark.sothudiary`,
-  SHA-1 `A0:3D:32:E0:1C:F5:4B:B0:60:EA:2D:43:C4:F9:CD:60:C9:74:29:0D` (from the committed `composeApp/sothu-release.jks`,
-  alias sothu, used by CI and local builds). Nothing needs to go into the code for an Android client.
-- Android sign-in: Google Identity Services `Identity.getAuthorizationClient(activity).authorize(AuthorizationRequest
-  .builder().setRequestedScopes(listOf(Scope(DRIVE_APPDATA))).build())`; if `hasResolution()` launch its PendingIntent
-  via the activity bridge (like openDocument); result → `accessToken`. Dependency `com.google.android.gms:play-services-auth`
-  (check the latest version). Save only the account email in settings, never the token; ask again when a call gets 401.
-- HTTP: `httpCall` sends/reads String bodies and caps answers at 4 MB → add `httpUploadBytes` / `httpDownloadBytes`
-  (expect/actual, Android HttpURLConnection, desktop the same) for files.
-- Drive REST v3: list `GET https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name,size,modifiedTime)&pageSize=1000`;
-  create `POST https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart` (metadata `{"name":..,"parents":["appDataFolder"]}`);
-  replace `PATCH https://www.googleapis.com/upload/drive/v3/files/{id}?uploadType=media`; download `GET .../drive/v3/files/{id}?alt=media`;
-  delete `DELETE .../drive/v3/files/{id}`.
-- Layout: `sothu_diary.json` (= `Repository.exportJson()`, includes docTexts / docChat) + one Drive file per stored file
-  (images/, voice/, documents use their unique file names, so upload only names not on Drive; delete Drive files no longer referenced).
-- Restore: after sign-in on a phone with no properties (or on "Restore from Drive"), download the JSON, `importJson`,
-  then download every referenced file into the matching folder. When both sides have data, ask: keep phone / use Drive /
-  merge by property id (newest `updatedAt` wins).
-- When: "Back up now" button + automatic backup 30 s after a change while signed in (debounced), only on the user's own
-  account; show "Last backup: time" in Settings. Settings card texts in Tamil + English (new `Strings300.kt`).
-- Tests: pure functions for the upload/delete diff and the merge (V300Test). Not testable here: sign-in (phone only).
-- Then (owner, 2026-11-10): an "AI key" card in Settings (provider, masked key ••••last4, model, Test key, Change),
-  today under Settings → Online services; and list where AI is used (Land check AI search, Price check / Area rates
-  online search, Documents & EC) so manual alternatives can be weighed.
+## v3.0.0 Google Drive backup / sync – implemented (this commit), needs a phone test
+- Owner setup in Google Cloud console is DONE (owner, 2026-11-10): Android OAuth client, package `com.hark.sothudiary`,
+  SHA-1 `A0:3D:32:E0:1C:F5:4B:B0:60:EA:2D:43:C4:F9:CD:60:C9:74:29:0D` (committed `composeApp/sothu-release.jks`, alias
+  sothu, signs both CI debug and release builds). OAuth consent screen is in Testing; the only test user is
+  **harksathya@gmail.com** → Drive sign-in on the phone must pick that Gmail (other accounts are refused while in testing).
+  If the phone shows DEVELOPER_ERROR (ApiException 10) treat it as a REAL bug to debug, not missing setup: check the
+  OAuth client and the Drive API are in the SAME Cloud project, Drive API enabled, test user listed, SHA-1 of the
+  installed APK (`apksigner verify --print-certs`) equals the one above, wait 5–30 min after console changes.
+- Code: `domain/drive/DriveSync.kt` (DriveRules, StoredRef, referencedFiles, planBackup, planRestore, needsRestoreChoice,
+  mergeAppData, multipartBody, authErrorText, DriveClient REST v3, DriveSync connect/backup/restore/disconnect with a
+  Mutex and Compose state busy/status), `ui/screens/DriveCard.kt` (Settings card + keep/use/merge dialog),
+  `i18n/Strings300.kt` (S30), `AppSettings.driveAccount/driveLastBackupAt/driveAuto`, `Repository.setDrive/parseBackup/
+  applyDriveBackup` (keeps this phone's language + Drive fields), auto backup `LaunchedEffect(driveKey)` in `App.kt`
+  (30 s debounce; skipped until the first backup / restore choice), expect/actual `httpUploadBytes` / `httpDownloadBytes`
+  (`BytesResult`; PATCH sent as POST + X-HTTP-Method-Override), `PlatformActions.driveSupported/driveAuthorize/
+  driveClearToken/readAppFile/writeAppFile/appFileExists`, Android `AndroidPlatform` (Identity.getAuthorizationClient,
+  hasResolution → `ActivityBridge.startIntentSender` → getAuthorizationResultFromIntent; clearToken on 401),
+  `MainActivity` StartIntentSenderForResult, dependency `play-services-auth:22.0.0` (latest on Google Maven 2026-11-10).
+- Drive layout (appDataFolder): `sothu_diary.json` + one file per stored file named `<folder>__<file>` (images / voice /
+  music). Token never stored; a 401 clears it and asks once more. Email from Drive `about?fields=user(emailAddress)`.
+- Safety: a phone whose `driveLastBackupAt == 0` never overwrites an existing Drive backup – the user must choose
+  (empty phone → restored automatically; otherwise merge / use Drive / keep phone). Disconnect resets it.
+- Tests: `V300Test` (diff, restore list, merge, restore-keeps-settings, multipart, DEVELOPER_ERROR text).
+- UNVERIFIED (phone only): GIS consent flow, real uploads/downloads, X-HTTP-Method-Override on the upload endpoint,
+  large PDFs (whole file in memory; no resumable upload yet – fine for files of a few MB).
 
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,
@@ -128,12 +124,12 @@ Goal (owner, 2026-11-10): same Gmail on a new phone → all properties, photos, 
 - v2.8.0 needs a real test on the phone with a real EC (Tamil) and a Gemini key – not done yet. Open points:
   (a) not verified which providers accept PDF (Gemini and Claude do by their docs; OpenAI-style `file` parts work on
   OpenAI / OpenRouter but Groq / DeepSeek may refuse images – the error is shown on the screen);
-  (b) deleting a whole property does not yet delete its document files (only Remove on the Documents screen does);
   (c) a very long EC (many pages) may exceed the model's output limit – then the JSON is cut and "the AI answer could
   not be read" is shown; a fix would be to send the EC in page batches;
   (d) no "open the file" button yet on the Documents list.
 
 ## Yet to start
+- v3.0.1: "AI key" card in Settings (provider, masked key ••••last4, model, Test key, Change) + list of where AI is used.
 - EXTRA map layers from OpenFreeMap tiles (see Not working).
 - Other ideas offered, not chosen yet: offline Tamil OCR (Tesseract4Android), reminders for follow-ups, price
-  comparison chart, Google Drive backup.
+  comparison chart.

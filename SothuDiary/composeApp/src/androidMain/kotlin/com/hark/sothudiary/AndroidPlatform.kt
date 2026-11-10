@@ -137,6 +137,84 @@ class AndroidPlatform(
         }
     }
 
+    // ---- 3.0.0: Google Drive backup ----
+    override val driveSupported: Boolean get() = true
+
+    private fun appDir(folder: String): java.io.File? = when (folder) {
+        "images" -> AndroidImages.dir(context)
+        "voice" -> java.io.File(context.filesDir, AndroidAudio.VOICE_DIR).apply { mkdirs() }
+        "music" -> java.io.File(context.filesDir, AndroidMusic.MUSIC_DIR).apply { mkdirs() }
+        else -> null
+    }
+
+    private fun appFile(folder: String, fileName: String): java.io.File? =
+        if (fileName.isBlank() || fileName.contains('/') || fileName.startsWith(".")) null else appDir(folder)?.let { java.io.File(it, fileName) }
+
+    override fun readAppFile(folder: String, fileName: String): ByteArray? =
+        appFile(folder, fileName)?.takeIf { it.exists() }?.let { runCatching { it.readBytes() }.getOrNull() }
+
+    override fun appFileExists(folder: String, fileName: String): Boolean = appFile(folder, fileName)?.let { it.exists() && it.length() > 0 } == true
+
+    override fun writeAppFile(folder: String, fileName: String, bytes: ByteArray): Boolean {
+        val f = appFile(folder, fileName) ?: return false
+        return runCatching {
+            val tmp = java.io.File(f.parentFile, f.name + ".part")
+            tmp.writeBytes(bytes)
+            if (!tmp.renameTo(f)) { f.writeBytes(bytes); tmp.delete() }
+            true
+        }.getOrDefault(false)
+    }
+
+    override fun driveAuthorize(interactive: Boolean, onResult: (DriveAuth) -> Unit) {
+        val activity = bridge.activity
+        val client = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(activity)
+        val request = com.google.android.gms.auth.api.identity.AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(com.google.android.gms.common.api.Scope(com.hark.sothudiary.domain.drive.DriveRules.SCOPE)))
+            .build()
+        fun failure(e: Exception): DriveAuth = when (e) {
+            is com.google.android.gms.common.api.ApiException ->
+                DriveAuth(error = "ApiException " + e.statusCode + ": " + (e.message ?: ""), cancelled = e.statusCode == 16 || e.statusCode == 12501)
+            else -> DriveAuth(error = (e::class.simpleName ?: "error") + ": " + (e.message ?: ""))
+        }
+        try {
+            client.authorize(request)
+                .addOnSuccessListener { r ->
+                    val token = r.accessToken
+                    val pi = r.pendingIntent
+                    when {
+                        r.hasResolution() && pi != null -> {
+                            if (!interactive) { onResult(DriveAuth(needsScreen = true)); return@addOnSuccessListener }
+                            bridge.startIntentSender(pi.intentSender) { code, data ->
+                                if (code != android.app.Activity.RESULT_OK || data == null) {
+                                    onResult(DriveAuth(cancelled = true, error = "cancelled ($code)"))
+                                } else try {
+                                    val res = client.getAuthorizationResultFromIntent(data)
+                                    onResult(res.accessToken?.let { DriveAuth(token = it) } ?: DriveAuth(error = "no access token"))
+                                } catch (e: Exception) {
+                                    onResult(failure(e))
+                                }
+                            }
+                        }
+                        token != null -> onResult(DriveAuth(token = token))
+                        else -> onResult(DriveAuth(error = "no access token"))
+                    }
+                }
+                .addOnFailureListener { e -> onResult(failure(e)) }
+        } catch (e: Exception) {
+            onResult(failure(e))
+        }
+    }
+
+    override fun driveClearToken(token: String, onDone: () -> Unit) {
+        try {
+            com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(bridge.activity)
+                .clearToken(com.google.android.gms.auth.api.identity.ClearTokenRequest.builder().setToken(token).build())
+                .addOnCompleteListener { onDone() }
+        } catch (e: Exception) {
+            onDone()
+        }
+    }
+
     override fun readStoredFile(fileName: String): ByteArray? {
         if (fileName.isBlank() || fileName.contains('/')) return null
         val f = java.io.File(AndroidImages.dir(context), fileName)

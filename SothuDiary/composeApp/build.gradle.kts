@@ -46,6 +46,8 @@ kotlin {
             implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
             // On-device OCR for shared posters / screenshots (Latin script)
             implementation("com.google.mlkit:text-recognition:16.0.1")
+            // 3.0.0: Google Drive backup – Google Identity Services AuthorizationClient (drive.appdata scope)
+            implementation("com.google.android.gms:play-services-auth:22.0.0")
         }
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
@@ -80,8 +82,8 @@ android {
         applicationId = "com.hark.sothudiary"
         minSdk = 24
         targetSdk = 34
-        versionCode = 21
-        versionName = "2.9.1"
+        versionCode = 22
+        versionName = "3.0.0"
         // Phones are ARM; dropping x86 keeps ML Kit's native OCR libraries out of the APK for emulators only.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -129,7 +131,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "SothuDiary"
-            packageVersion = "2.9.1"
+            packageVersion = "3.0.0"
         }
     }
 }

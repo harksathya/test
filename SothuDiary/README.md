@@ -9,6 +9,16 @@ Debug APK (latest build): https://github.com/harksathya/test/releases/download/s
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
 
+## What's new in v3.0.0
+
+- **Google Drive backup / sync (Settings → Google Drive backup):** "Connect Google Drive" signs in with Google
+  (Google Identity Services, scope `drive.appdata` – a hidden app folder in your own Drive; no server, the access
+  token is never saved). All data (`sothu_diary.json`) plus every photo, voice note, document and your own song are
+  backed up; only new files are uploaded and files no longer used are removed from Drive. "Back up now", automatic
+  backup 30 s after a change, "Last backup" time. On a new phone with the same Gmail the backup is restored at once;
+  when both the phone and Drive have data you choose: merge (newest property wins), use Drive, or keep phone.
+  Clear Tamil + English errors (e.g. DEVELOPER_ERROR 10 lists what to check in Google Cloud console).
+
 ## What's new in v2.9.1
 
 - **EC chat on mobile data:** the first phone test lost the connection after 123 s ("Unable to resolve host
