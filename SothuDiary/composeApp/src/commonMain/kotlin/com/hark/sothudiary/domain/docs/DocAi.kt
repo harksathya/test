@@ -9,7 +9,7 @@ import com.hark.sothudiary.domain.ai.parseChatText
 import com.hark.sothudiary.domain.ai.rankChatModels
 import com.hark.sothudiary.domain.pricing.parseGeminiError
 import com.hark.sothudiary.domain.pricing.pickModels
-import com.hark.sothudiary.httpRequest
+import com.hark.sothudiary.httpCall
 import com.hark.sothudiary.domain.urlEncode
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -86,24 +86,44 @@ fun multimodalBody(style: ApiStyle, model: String, prompt: String, files: List<D
     }
 }.toString()
 
-/** Models to try, in order (at most 3): the user's chosen one, else the provider's list ranked like the other AI calls. */
+/**
+ * Models to try, in order (at most [DocRules.MAX_MODELS]): the user's chosen model first, then the provider's list
+ * ranked like the other AI calls (2.8.1: a chosen model that times out or is busy no longer ends the check).
+ */
 suspend fun docModels(llm: LlmConfig): List<String> {
-    if (llm.model != AUTO_MODEL && llm.model.isNotBlank()) return listOf(llm.model)
-    val listed = listModels(llm.provider, llm.apiKey) ?: return emptyList()
-    val ids = if (llm.provider.style == ApiStyle.GEMINI) pickModels(listed.map { it.id }) else rankChatModels(llm.provider, listed)
-    return ids.take(3)
+    val chosen = llm.model.takeIf { it != AUTO_MODEL && it.isNotBlank() }
+    val listed = listModels(llm.provider, llm.apiKey)
+    val ranked = when {
+        listed == null -> emptyList()
+        llm.provider.style == ApiStyle.GEMINI -> pickModels(listed.map { it.id })
+        else -> rankChatModels(llm.provider, listed)
+    }
+    return (listOfNotNull(chosen) + ranked).distinct().take(DocRules.MAX_MODELS)
 }
 
-/** Sends the files and [prompt] to the chosen provider. Tries up to three models; stops on a bad key. */
-suspend fun readDocumentsWithAi(llm: LlmConfig, prompt: String, files: List<DocFile>, timeoutMs: Int = 150_000): DocAiResult {
+/** True when another model may succeed where this one failed (timeout, busy, quota, model not found / no files). */
+fun tryNextModel(code: Int): Boolean = code < 0 || code == 400 || code == 404 || code == 408 || code == 429 || code >= 500
+
+/**
+ * Sends the files and [prompt] to the chosen provider. Tries up to [DocRules.MAX_MODELS] models; stops on a refused
+ * key. 2.8.1: uses [httpCall] so the real reason of a failed call (timeout, DNS, TLS …) is shown, not "no internet".
+ */
+suspend fun readDocumentsWithAi(llm: LlmConfig, prompt: String, files: List<DocFile>, timeoutMs: Int = DocRules.AI_TIMEOUT_MS): DocAiResult {
     if (!llm.hasKey) return DocAiResult.Failed("no AI key")
     if (files.isEmpty()) return DocAiResult.Failed("no documents")
     val total = files.sumOf { it.bytes.size }
     if (total > DocRules.MAX_TOTAL_BYTES) return DocAiResult.Failed("files too large (${total / 1_000_000} MB, max ${DocRules.MAX_TOTAL_BYTES / 1_000_000} MB)")
     val models = docModels(llm)
-    if (models.isEmpty()) return DocAiResult.Failed("no model listed for this key (or no internet)")
+    if (models.isEmpty()) return DocAiResult.Failed("could not list the models of this key (no internet?)")
+    val tried = mutableListOf<String>()
+    val started = com.hark.sothudiary.data.nowMillis()
     var last: DocAiResult.Failed = DocAiResult.Failed("failed", models.first())
     for (m in models) {
+        // 2.8.1: the whole check stays within [DocRules.AI_BUDGET_MS]; a further model gets only the time that is left.
+        val left = DocRules.AI_BUDGET_MS - (com.hark.sothudiary.data.nowMillis() - started)
+        if (tried.isNotEmpty() && left < 45_000) break
+        val callTimeout = minOf(timeoutMs.toLong(), left).toInt()
+        tried += m
         val p = llm.provider
         val url = when (p.style) {
             ApiStyle.GEMINI -> "${LlmProviders.GEMINI.baseUrl}/models/$m:generateContent?key=" + urlEncode(llm.apiKey)
@@ -121,18 +141,23 @@ suspend fun readDocumentsWithAi(llm: LlmConfig, prompt: String, files: List<DocF
                 ApiStyle.ANTHROPIC -> { put("x-api-key", llm.apiKey.trim()); put("anthropic-version", "2023-06-01") }
             }
         }
-        val r = httpRequest(url, method = "POST", headers = headers, body = multimodalBody(p.style, m, prompt, files), timeoutMs = timeoutMs)
-            ?: return DocAiResult.Failed("no internet / no answer", m)
+        val body = multimodalBody(p.style, m, prompt, files)
+        val r = httpCall(url, method = "POST", headers = headers, body = body, followRedirects = false, timeoutMs = callTimeout)
+        if (r.failed) {
+            val why = r.error ?: "no answer"
+            last = DocAiResult.Failed((if (why == "timeout") "no answer in ${callTimeout / 1000} s (timeout)" else why) + " · ${r.ms / 1000} s", tried.joinToString(", "))
+            if (why.startsWith("no internet")) break
+            continue
+        }
         if (r.ok) {
             val text = parseChatText(p.style, r.body)
             if (text.isNotBlank()) return DocAiResult.Ok(text, m)
-            last = DocAiResult.Failed("empty answer", m)
+            last = DocAiResult.Failed("empty answer", tried.joinToString(", "))
             continue
         }
         val e = parseGeminiError(r.code, r.body)
-        last = DocAiResult.Failed("HTTP ${r.code}: " + e.message.take(160), m)
-        // A refused key fails the same way on every model.
-        if (r.code == 401 || r.code == 403) break
+        last = DocAiResult.Failed("HTTP ${r.code}: " + e.message.take(160), tried.joinToString(", "))
+        if (!tryNextModel(r.code)) break
     }
     return last
 }

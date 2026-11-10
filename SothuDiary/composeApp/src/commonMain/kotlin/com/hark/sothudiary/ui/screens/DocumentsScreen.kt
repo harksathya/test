@@ -138,7 +138,10 @@ fun DocumentsScreen(ctx: AppContext, propertyId: String) {
                     }
                     if (running) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
-                        Text(S8.analysing.s(), style = MaterialTheme.typography.bodySmall)
+                        var now by remember { mutableStateOf(nowMillis()) }
+                        androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1000); now = nowMillis() } }
+                        val since = CheckRunner.running["docs:${p.id}"] ?: now
+                        Text(S8.analysing.format(lang, ((now - since) / 1000).coerceAtLeast(0)), style = MaterialTheme.typography.bodySmall)
                     }
                     if (error != null && !running) Text(S8.failed.format(lang, error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }

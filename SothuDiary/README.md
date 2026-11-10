@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.8.0
+# Sothu Diary (சொத்து டைரி) – v2.8.1
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -8,6 +8,13 @@ rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-t
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
+
+## What's new in v2.8.1
+
+- **Documents & EC check fix:** the first phone test showed only "no internet / no answer · gemini-flash-latest". The
+  real reason was hidden (the call used `httpRequest`, which drops it). Now the screen shows it (timeout after N s,
+  DNS, TLS …); one AI call may take 240 s (was 150 s); when the chosen model times out, is busy or out of quota, up
+  to two other models from the key's list are tried, all within 6 minutes; the progress line counts the seconds.
 
 ## What's new in v2.8.0
 

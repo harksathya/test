@@ -14,6 +14,8 @@ import com.hark.sothudiary.domain.docs.natureFromText
 import com.hark.sothudiary.domain.docs.parseAiReading
 import com.hark.sothudiary.domain.docs.samePeople
 import com.hark.sothudiary.domain.docs.surveyMatches
+import com.hark.sothudiary.domain.docs.tryNextModel
+import com.hark.sothudiary.domain.docs.DocRules
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -129,5 +131,12 @@ class V280Test {
         assertTrue("data:image/jpeg;base64,AQID" in o && "\"file_data\"" in o && "ec.pdf" in o)
         val c = multimodalBody(ApiStyle.ANTHROPIC, "claude", "read", files)
         assertTrue("\"document\"" in c && "\"image\"" in c && "\"base64\"" in c)
+    }
+
+    /** 2.8.1: a timeout / busy / quota answer moves on to the next model; a refused key does not. */
+    @Test fun nextModelRules() {
+        assertTrue(tryNextModel(-1) && tryNextModel(429) && tryNextModel(503) && tryNextModel(404) && tryNextModel(400))
+        assertFalse(tryNextModel(401) || tryNextModel(403))
+        assertTrue(DocRules.AI_TIMEOUT_MS >= 240_000 && DocRules.AI_BUDGET_MS >= DocRules.AI_TIMEOUT_MS)
     }
 }

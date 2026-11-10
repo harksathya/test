@@ -35,6 +35,12 @@ object DocRules {
     const val VALUE_DROP_RATIO = 0.5
     /** Whole request to the AI (all files) at most this size – Gemini's inline limit is 20 MB. */
     const val MAX_TOTAL_BYTES = 18_000_000
+    /** 2.8.1: one AI call may take this long (a multi-page Tamil EC on a "thinking" model can need 2–3 minutes). */
+    const val AI_TIMEOUT_MS = 240_000
+    /** 2.8.1: the chosen model, then up to two others from the key's list. */
+    const val MAX_MODELS = 3
+    /** 2.8.1: all models together at most this long. */
+    const val AI_BUDGET_MS = 360_000
 }
 
 /** Nature of an EC entry, as a code (the AI picks one; [natureFromText] is the fallback from the printed words). */

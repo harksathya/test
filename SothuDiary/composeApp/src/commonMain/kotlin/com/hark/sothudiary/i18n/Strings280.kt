@@ -16,7 +16,7 @@ object S8 {
         "EC-இன் எல்லாப் பக்கங்களையும் (ஒரே PDF, அல்லது பக்கத்துக்கு ஒரு புகைப்படம்), பட்டா, சிட்டா, அடங்கல், கிரயப் பத்திரம் ஆகியவற்றைச் சேர்க்கவும். முதலில் நில விவரத்தில் புல எண், பட்டா எண் நிரப்புங்கள் – அந்த நிலத்துக்கே சங்கிலி கண்டறியப்படும்."
     )
     val analyse = Tr("Check documents (AI · {0})", "ஆவணங்களைச் சோதி (AI · {0})")
-    val analysing = Tr("Reading the documents… (1–2 minutes; it keeps going if you leave this screen)", "ஆவணங்களைப் படிக்கிறது… (1–2 நிமிடம்; திரையை விட்டுச் சென்றாலும் தொடரும்)")
+    val analysing = Tr("Reading the documents… {0} s (up to 4–6 minutes for a long EC; it keeps going if you leave this screen – keep the app open)", "ஆவணங்களைப் படிக்கிறது… {0} வி. (நீண்ட EC-க்கு 4–6 நிமிடம் வரை; திரையை விட்டுச் சென்றாலும் தொடரும் – ஆப்பை மூட வேண்டாம்)")
     val needKey = Tr(
         "Add an AI key in Settings (Gemini's free key reads Tamil documents and PDFs well) to read the documents.",
         "ஆவணங்களைப் படிக்க அமைப்புகளில் AI key சேர்க்கவும் (Gemini இலவச key தமிழ் ஆவணங்களையும் PDF-களையும் நன்றாகப் படிக்கும்)."

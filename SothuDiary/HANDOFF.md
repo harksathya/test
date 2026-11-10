@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 16:25 IST, by Hark (project agent). main = v2.8.0 `4d24c87` (versionCode 18).
+Last updated: 2026-11-10 18:45 IST, by Hark (project agent), for the v2.8.1 commit (versionCode 19).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -52,6 +52,12 @@ Last updated: 2026-11-10 16:25 IST, by Hark (project agent). main = v2.8.0 `4d24
   data classes `PropertyDocument`, `EcEntry`, `OwnershipLink`, `DocReading`, `DocFlag`, `DocAnalysis` in
   `data/Models.kt`, repo `addDocument/removeDocument/saveDocAnalysis`, `CheckRunner.docs`, Android
   `AndroidImages.copyDocument`). Tests `V280Test` (fixture AI answers; no live AI call in tests).
+
+- v2.8.1 (this commit; desktop tests pass locally; CI pending at time of writing) – owner's first phone test of 2.8.0
+  (Tenkasi property, one EC PDF, Gemini `gemini-flash-latest`) failed with "no internet / no answer": cause not known
+  (the reason was dropped). `domain/docs/DocAi.kt` now uses `httpCall` and shows the reason + seconds, timeout 240 s,
+  falls back to up to 2 more models (`tryNextModel`), total budget 6 min (`DocRules.AI_BUDGET_MS`). NEXT: ask the
+  owner for the new error text if it still fails; if it is a timeout, send the EC in page batches or lower thinking.
 
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,
