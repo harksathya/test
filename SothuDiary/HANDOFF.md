@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 15:55 IST, by Hark (project agent), for the v2.7.2 commit (versionCode 17).
+Last updated: 2026-11-10 16:00 IST, by Hark (project agent). main = v2.7.2 `7f47a01` (versionCode 17).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -38,16 +38,17 @@ Last updated: 2026-11-10 15:55 IST, by Hark (project agent), for the v2.7.2 comm
   (3) no retry after HTTP 400 (`httpCodeOf` + `overpassRetryable` in `fetchGroup`); (4) `OVERPASS_SLOTS_PER_SERVER = 2`
   (was 1); (5) © OpenStreetMap (ODbL) / OpenFreeMap credit on `LandCheckScreen.kt`. Tests `V271Test`.
   CI probe on 2.7.1: CORE from tiles, map step 18 s – but EXTRA failed because of a bug in (3), fixed in 2.7.2.
-- v2.7.2 (this commit; desktop tests pass locally, CI pending at time of writing) – the 2.7.1 stop rule used
+- v2.7.2 `7f47a01` (CI run 42798108314 success, APK updated 15:57 IST) – the 2.7.1 stop rule used
   `overpassRetryable`, which is false for 406, so one server's 406 stopped the whole group. Now `stopsAllServers(code)`
-  is true only for 400. Regression test `V271Test.refusedByOneServerStillAsksTheNext`. Next agent: confirm in the CI
-  probe line `land check map data (app path, …)` that amenities/utilities/rail/protected are back in ok=[…].
+  is true only for 400. Regression test `V271Test.refusedByOneServerStillAsksTheNext`. CI probe on 2.7.2: all three
+  servers are now asked (maps.mail.ru 504, overpass-api.de 406, private.coffee timeout 41 s) – they all failed in that
+  run, so EXTRA was still empty and the map step used the full 75 s budget. CORE came from tiles.
 
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,
   private.coffee no answer. The EXTRA group (amenities, utilities/power lines, rail, proposed roads, 10 km protected
-  areas) comes ONLY from Overpass and shows *Unknown* when it fails; it now dominates the land check time. Possible
-  fix: map OpenMapTiles `poi`, `transportation` (rail) and `park` layers in `VectorTiles.kt` as an EXTRA fallback
+  areas) comes ONLY from Overpass and shows *Unknown* when it fails; it now dominates the land check time (2.7.2
+  probe: 75 s, EXTRA empty; 2.7.0 probe: 34 s, EXTRA from maps.mail.ru). Best fix: map OpenMapTiles `poi`, `transportation` (rail) and `park` layers in `VectorTiles.kt` as an EXTRA fallback
   (power lines are not in OpenMapTiles).
 - TNREGINET (guideline value) unreachable from sandbox and CI (CI: HTTP -1 after 12 s). Form ids (districtList,
   SROList, villageList, streetName, surveyName) match a 2026 archived copy; live auto-fill untested.
@@ -60,7 +61,8 @@ Last updated: 2026-11-10 15:55 IST, by Hark (project agent), for the v2.7.2 comm
 - One AI search with a real non-Gemini provider key.
 
 ## In progress
-- Nothing half-done in the code after v2.7.1.
+- v2.8.0 document upload + EC analysis (see Yet to start for the spec). Started 2026-11-10 16:00 IST; nothing committed
+  yet. If this line is still here with no new commit, start the feature from scratch.
 
 ## Yet to start (agreed with the owner 2026-11-10; next = v2.8.0)
 - Document upload per property: EC, patta, chitta, adangal, sale deed (photo / PDF). Today `Property.docs` is only a
