@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 20:55 IST, by Hark (project agent). main = v3.0.0 (this commit; CI pending at time of writing). Previous: v2.9.1 `ab41b61` (CI 42826017808 success).
+Last updated: 2026-11-10 21:15 IST, by Hark (project agent). main = v3.0.1 (this commit; CI pending at time of writing). v3.0.0 `e7908ff` CI 42840196706 success (APK + desktop tests incl. V300Test passed, APK asset published from e7908ff).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -78,7 +78,13 @@ Last updated: 2026-11-10 20:55 IST, by Hark (project agent). main = v3.0.0 (this
   every batch and continue from the last page, "Ask again" button (`Repository.removeLastDocChat`), page JPEG 1400 px / 80.
   Still unknown why one 2-page call took 123 s (slow upload or Gemini thinking); if it repeats, try 1 page per call.
 
-## v3.0.0 Google Drive backup / sync – implemented (this commit), needs a phone test
+## v3.0.1 AI key card (this commit)
+- `ui/screens/AiKeyCard.kt` (`AiKeyCard`, `maskKey`), `i18n/Strings301.kt` (S31), SettingsScreen: the provider / key /
+  model editor moved from Online services into the card's `editor` slot (opens on Change, or when there is no key);
+  Online services keeps the YouTube key and saved rates. Test key = `listModels(provider, key)` non-empty. `V301Test`.
+- Needs phone check: Test key with the owner's Gemini key; layout in Tamil.
+
+## v3.0.0 Google Drive backup / sync – `e7908ff`, CI 42840196706 success; needs a phone test
 - Owner setup in Google Cloud console is DONE (owner, 2026-11-10): Android OAuth client, package `com.hark.sothudiary`,
   SHA-1 `A0:3D:32:E0:1C:F5:4B:B0:60:EA:2D:43:C4:F9:CD:60:C9:74:29:0D` (committed `composeApp/sothu-release.jks`, alias
   sothu, signs both CI debug and release builds). OAuth consent screen is in Testing; the only test user is
@@ -129,7 +135,6 @@ Last updated: 2026-11-10 20:55 IST, by Hark (project agent). main = v3.0.0 (this
   (d) no "open the file" button yet on the Documents list.
 
 ## Yet to start
-- v3.0.1: "AI key" card in Settings (provider, masked key ••••last4, model, Test key, Change) + list of where AI is used.
 - EXTRA map layers from OpenFreeMap tiles (see Not working).
 - Other ideas offered, not chosen yet: offline Tamil OCR (Tesseract4Android), reminders for follow-ups, price
   comparison chart.

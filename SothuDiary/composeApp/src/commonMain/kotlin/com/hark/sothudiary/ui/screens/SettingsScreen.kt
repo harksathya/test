@@ -62,7 +62,7 @@ import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.domain.dec
 
-const val APP_VERSION = "3.0.0"
+const val APP_VERSION = "3.0.1"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -168,8 +168,8 @@ fun SettingsScreen(ctx: AppContext) {
                 }
             }
 
-            SectionCard(title = S.onlineServices.s()) {
-                var yt by remember(data.settings.youtubeApiKey) { mutableStateOf(data.settings.youtubeApiKey) }
+            // 3.0.1: the AI key card (provider, masked key, model, Test key, Change) – the editor opens on Change.
+            AiKeyCard(ctx) { onSaved ->
                 // 2.5.0 (issue #1): any one AI provider with its own key; the model list comes from the provider.
                 val savedProvider = data.settings.llmProvider()
                 var provider by remember(savedProvider) { mutableStateOf(savedProvider) }
@@ -192,9 +192,14 @@ fun SettingsScreen(ctx: AppContext) {
                     Text(S5.aiModelHint.f(provider.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val changed = provider != savedProvider || gm.trim() != data.settings.keyFor(provider) ||
                         normalizeModel(provider, model) != data.settings.modelFor(provider)
-                    Button(onClick = { ctx.repo.setLlm(provider, gm, model); ctx.platform.toast(S.saved.of(lang)) }, enabled = changed && gm.isNotBlank()) { Text(S.save.s()) }
+                    Button(onClick = { ctx.repo.setLlm(provider, gm, model); ctx.platform.toast(S.saved.of(lang)); onSaved() }, enabled = changed && gm.isNotBlank()) { Text(S.save.s()) }
                     if (picking) ModelPickerDialog(provider, gm, onDismiss = { picking = false }, onPick = { m -> model = shown(m); picking = false })
-                    HorizontalDivider()
+                }
+            }
+
+            SectionCard(title = S.onlineServices.s()) {
+                var yt by remember(data.settings.youtubeApiKey) { mutableStateOf(data.settings.youtubeApiKey) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Field(yt, { yt = it }, S.youtubeKey.s(), supporting = S.youtubeKeyHint.s())
                     Button(onClick = { ctx.repo.setYoutubeKey(yt); ctx.platform.toast(S.saved.of(lang)) }, enabled = yt != data.settings.youtubeApiKey) { Text(S5.youtubeSave.s()) }
                     HorizontalDivider()

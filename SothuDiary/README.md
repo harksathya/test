@@ -9,6 +9,13 @@ Debug APK (latest build): https://github.com/harksathya/test/releases/download/s
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
 
+## What's new in v3.0.1
+
+- **AI key card (Settings, top):** shows the provider, the key masked as ••••last4, and the model; "Test key" asks the
+  provider for its model list (works for every provider); "Change" opens the provider / key / model editor (moved here
+  from Online services). The card also lists where AI is used – Land check AI search, Price check / Area rates online
+  search, Documents & EC – so the manual alternatives can be weighed.
+
 ## What's new in v3.0.0
 
 - **Google Drive backup / sync (Settings → Google Drive backup):** "Connect Google Drive" signs in with Google
