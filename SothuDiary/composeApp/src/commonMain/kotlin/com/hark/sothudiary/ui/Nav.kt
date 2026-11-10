@@ -32,6 +32,8 @@ sealed interface Route {
     data class PriceCheck(val propertyId: String) : Route
     /** 2.4.0: guideline value + stamp duty of one property, on its own screen. */
     data class Guideline(val propertyId: String) : Route
+    /** 2.8.0: documents (EC, patta, chitta, adangal, sale deed) and the EC / ownership check of one property. */
+    data class Documents(val propertyId: String) : Route
 }
 
 /** Simple state-based navigation: a selected tab plus a stack of detail/edit routes. */

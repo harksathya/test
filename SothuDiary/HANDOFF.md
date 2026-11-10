@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 16:00 IST, by Hark (project agent). main = v2.7.2 `7f47a01` (versionCode 17).
+Last updated: 2026-11-10 16:40 IST, by Hark (project agent), for the v2.8.0 commit (versionCode 18).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -44,6 +44,14 @@ Last updated: 2026-11-10 16:00 IST, by Hark (project agent). main = v2.7.2 `7f47
   servers are now asked (maps.mail.ru 504, overpass-api.de 406, private.coffee timeout 41 s) – they all failed in that
   run, so EXTRA was still empty and the map step used the full 75 s budget. CORE came from tiles.
 
+- v2.8.0 (this commit; desktop compile + tests pass locally, Android compiled only by CI – check the run) – Documents
+  & EC check: upload EC / patta / chitta / adangal / sale deed (photo or PDF), AI transcription with the user's
+  provider, ownership chain + rule flags in common code (`domain/docs/DocAnalysis.kt`, `domain/docs/DocAi.kt`,
+  `ui/screens/DocumentsScreen.kt`, `Route.Documents`, tile in `ui/screens/Checks.kt`, strings `i18n/Strings280.kt`,
+  data classes `PropertyDocument`, `EcEntry`, `OwnershipLink`, `DocReading`, `DocFlag`, `DocAnalysis` in
+  `data/Models.kt`, repo `addDocument/removeDocument/saveDocAnalysis`, `CheckRunner.docs`, Android
+  `AndroidImages.copyDocument`). Tests `V280Test` (fixture AI answers; no live AI call in tests).
+
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,
   private.coffee no answer. The EXTRA group (amenities, utilities/power lines, rail, proposed roads, 10 km protected
@@ -61,19 +69,15 @@ Last updated: 2026-11-10 16:00 IST, by Hark (project agent). main = v2.7.2 `7f47
 - One AI search with a real non-Gemini provider key.
 
 ## In progress
-- v2.8.0 document upload + EC analysis (see Yet to start for the spec). Started 2026-11-10 16:00 IST; nothing committed
-  yet. If this line is still here with no new commit, start the feature from scratch.
+- v2.8.0 needs a real test on the phone with a real EC (Tamil) and a Gemini key – not done yet. Open points:
+  (a) not verified which providers accept PDF (Gemini and Claude do by their docs; OpenAI-style `file` parts work on
+  OpenAI / OpenRouter but Groq / DeepSeek may refuse images – the error is shown on the screen);
+  (b) deleting a whole property does not yet delete its document files (only Remove on the Documents screen does);
+  (c) a very long EC (many pages) may exceed the model's output limit – then the JSON is cut and "the AI answer could
+  not be read" is shown; a fix would be to send the EC in page batches;
+  (d) no "open the file" button yet on the Documents list.
 
-## Yet to start (agreed with the owner 2026-11-10; next = v2.8.0)
-- Document upload per property: EC, patta, chitta, adangal, sale deed (photo / PDF). Today `Property.docs` is only a
-  checklist (`DocItem` enum in `data/Models.kt`), no files.
-- EC analysis: read the EC (Tamil or English), trace the ownership chain for the property's patta / survey number,
-  and show a summary: seller → buyer (owner names), sale value, year/date, document number, SRO.
-- Red flags (non-compliance): gaps in the chain, seller not the previous buyer, mortgage without a release,
-  court attachment / lis pendens, power-of-attorney sales, sale value below guideline, survey / extent mismatch
-  between EC, patta, chitta, adangal and sale deed, patta holder ≠ latest EC buyer.
-- Bilingual (Tamil / English). Planned approach: send document images / PDF to the owner's chosen AI provider
-  (needs a multimodal request in `domain/ai/Llm.kt`), parse structured JSON, keep the chain and flag rules in common
-  code with tests, save results with the property, never invent values (each row cites its EC entry).
+## Yet to start
+- EXTRA map layers from OpenFreeMap tiles (see Not working).
 - Other ideas offered, not chosen yet: offline Tamil OCR (Tesseract4Android), reminders for follow-ups, price
   comparison chart, Google Drive backup.

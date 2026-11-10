@@ -127,6 +127,22 @@ class AndroidPlatform(
         }
     }
 
+    override fun pickDocument(onResult: (PickedFile?) -> Unit) {
+        bridge.openDocument(arrayOf("image/*", "application/pdf")) { uri ->
+            if (uri == null) onResult(null)
+            else Thread {
+                val f = AndroidImages.copyDocument(context, uri)
+                android.os.Handler(android.os.Looper.getMainLooper()).post { onResult(f) }
+            }.start()
+        }
+    }
+
+    override fun readStoredFile(fileName: String): ByteArray? {
+        if (fileName.isBlank() || fileName.contains('/')) return null
+        val f = java.io.File(AndroidImages.dir(context), fileName)
+        return if (f.exists()) runCatching { f.readBytes() }.getOrNull() else null
+    }
+
     override fun imageAspect(fileName: String): Double? {
         val path = imagePath(fileName) ?: return null
         val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }

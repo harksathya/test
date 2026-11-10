@@ -57,6 +57,8 @@ fun sharedCopy(p: Property, land: LandCheck?, broker: Broker?, o: ShareOptions):
     val clean = p.copy(
         lat = p.lat?.let(::r6), lng = p.lng?.let(::r6),
         imageFile = "", photos = emptyList(), folderIds = emptySet(), brokerId = null, status = DealStatus.NEW, docs = emptySet(),
+        // 2.8.0: uploaded documents and their check are private (names, values) and their files stay on this phone.
+        documents = emptyList(), docAnalysis = null,
         notes = if (o.notes) p.notes.take(1500) else "",
         sourceCaption = p.sourceCaption.take(700),
         reviews = p.reviews.take(3).map { it.copy(text = it.text.take(220)) },
@@ -140,6 +142,7 @@ fun mergeShared(existing: Property?, incoming: Property, mode: ImportMode, now: 
     return incoming.copy(
         id = id, status = DealStatus.NEW, notes = noteFromSender, folderIds = emptySet(), brokerId = null, docs = emptySet(),
         imageFile = "", photos = emptyList(), sketch = null, sample = false, createdAt = now, updatedAt = now, importedAt = now,
+        documents = emptyList(), docAnalysis = null,
     )
 }
 

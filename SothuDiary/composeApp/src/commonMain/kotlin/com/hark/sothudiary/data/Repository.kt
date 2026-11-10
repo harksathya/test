@@ -317,6 +317,21 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
         d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(registry = registry, updatedAt = nowMillis()) else it })
     }
 
+    /** 2.8.0: adds an uploaded document to a property. */
+    fun addDocument(propertyId: String, doc: PropertyDocument) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(documents = it.documents + doc, updatedAt = nowMillis()) else it })
+    }
+
+    /** 2.8.0: removes an uploaded document (the file itself is deleted by the caller). */
+    fun removeDocument(propertyId: String, docId: String) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(documents = it.documents.filterNot { x -> x.id == docId }, updatedAt = nowMillis()) else it })
+    }
+
+    /** 2.8.0: saves the last document check. */
+    fun saveDocAnalysis(propertyId: String, a: DocAnalysis) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(docAnalysis = a, updatedAt = nowMillis()) else it })
+    }
+
     /** 2.4.0: weights of the property score. */
     fun setScoreWeights(w: ScoreWeights) = update { d -> d.copy(settings = d.settings.copy(scoreWeights = w)) }
 

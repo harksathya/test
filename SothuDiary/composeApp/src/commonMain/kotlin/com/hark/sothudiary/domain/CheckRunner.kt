@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.toLocalDateTime
 
 /**
  * 2.4.0: runs the Land check in an app-wide scope (the price check is computed on the phone from the user's own data).
@@ -58,6 +59,54 @@ object CheckRunner {
                 throw e
             } catch (e: Throwable) {
                 // Never crash the app from a background check; the Status panel shows what was saved.
+            } finally {
+                withContext(Dispatchers.Main) { running.remove(k) }
+            }
+        }
+    }
+
+    /** 2.8.0: last document-check failure per property (shown on the Documents screen), cleared on success. */
+    val docErrors = mutableStateMapOf<String, String>()
+
+    /**
+     * 2.8.0: reads the property's uploaded documents with the user's AI provider and checks them ([buildAnalysis]).
+     * Runs in the app-wide scope like the land check, so leaving the screen does not stop it.
+     */
+    fun docs(repo: JsonRepository, p: Property, readFile: (String) -> ByteArray?) {
+        val k = "docs:${p.id}"
+        if (running.containsKey(k) || p.documents.isEmpty()) return
+        running[k] = nowMillis()
+        docErrors.remove(p.id)
+        val llm = repo.data.settings.llm()
+        scope.launch {
+            try {
+                // EC first (the chain comes from it), then the revenue records, then the deeds.
+                val order = listOf(com.hark.sothudiary.data.DocKind.EC, com.hark.sothudiary.data.DocKind.PATTA, com.hark.sothudiary.data.DocKind.CHITTA,
+                    com.hark.sothudiary.data.DocKind.ADANGAL, com.hark.sothudiary.data.DocKind.SALE_DEED, com.hark.sothudiary.data.DocKind.OTHER)
+                val docs = p.documents.sortedBy { order.indexOf(it.kind) }
+                val files = docs.mapNotNull { d -> readFile(d.fileName)?.let { d to com.hark.sothudiary.domain.docs.DocFile(d.mime, it, d.displayName) } }
+                if (files.isEmpty()) { onMain { docErrors[p.id] = "files missing" }; return@launch }
+                val prompt = com.hark.sothudiary.domain.docs.analysisPrompt(p.land, files.map { it.first.kind }, p.title)
+                when (val r = com.hark.sothudiary.domain.docs.readDocumentsWithAi(llm, prompt, files.map { it.second })) {
+                    is com.hark.sothudiary.domain.docs.DocAiResult.Failed -> onMain { docErrors[p.id] = r.message + (if (r.model.isNotBlank()) " · ${r.model}" else "") }
+                    is com.hark.sothudiary.domain.docs.DocAiResult.Ok -> {
+                        val reading = com.hark.sothudiary.domain.docs.parseAiReading(r.text)
+                        if (reading == null) onMain { docErrors[p.id] = "the AI answer could not be read · ${r.model}" }
+                        else {
+                            val today = kotlinx.datetime.Clock.System.now()
+                                .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date.toString()
+                            val a = com.hark.sothudiary.domain.docs.buildAnalysis(
+                                reading, p.land, hasEc = files.any { it.first.kind == com.hark.sothudiary.data.DocKind.EC }, now = today,
+                                analysedAt = nowMillis(), provider = llm.provider.name, model = r.model, docIds = files.map { it.first.id },
+                            )
+                            onMain { repo.saveDocAnalysis(p.id, a) }
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                withContext(Dispatchers.Main) { docErrors[p.id] = e.message ?: "error" }
             } finally {
                 withContext(Dispatchers.Main) { running.remove(k) }
             }

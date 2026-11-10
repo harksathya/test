@@ -16,6 +16,46 @@ object AndroidImages {
 
     fun dir(context: Context): File = File(context.filesDir, DIR).apply { mkdirs() }
 
+    /**
+     * 2.8.0: copies a picked document (photo or PDF) into app storage. Photos larger than [DOC_MAX_SIDE] px are scaled
+     * down to a JPEG (a phone photo of an EC is often 4–8 MB; the AI reads 2400 px well and the upload stays small).
+     */
+    fun copyDocument(context: Context, uri: Uri): com.hark.sothudiary.PickedFile? = runCatching {
+        val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+        var display = "document"
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0)?.let { display = it }
+        }
+        val stamp = System.currentTimeMillis().toString() + "_" + (0..999).random()
+        if (mime == "application/pdf") {
+            val out = File(dir(context), "doc_$stamp.pdf")
+            context.contentResolver.openInputStream(uri)?.use { input -> out.outputStream().use { input.copyTo(it) } } ?: return null
+            if (out.length() == 0L) { out.delete(); return null }
+            return com.hark.sothudiary.PickedFile(out.name, "application/pdf", display)
+        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        val side = maxOf(bounds.outWidth, bounds.outHeight)
+        if (side <= 0) return null
+        var sample = 1
+        while (side / (sample * 2) >= DOC_MAX_SIDE) sample *= 2
+        val bmp = context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+        } ?: return null
+        val big = maxOf(bmp.width, bmp.height)
+        val scaled = if (big > DOC_MAX_SIDE) {
+            val f = DOC_MAX_SIDE.toFloat() / big
+            android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * f).toInt().coerceAtLeast(1), (bmp.height * f).toInt().coerceAtLeast(1), true)
+        } else bmp
+        val out = File(dir(context), "doc_$stamp.jpg")
+        out.outputStream().use { scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }
+        if (scaled !== bmp) scaled.recycle()
+        bmp.recycle()
+        com.hark.sothudiary.PickedFile(out.name, "image/jpeg", display)
+    }.getOrNull()
+
+    private const val DOC_MAX_SIDE = 2400
+
     /** Copies a content:// image into app storage, downscaling very large images. Returns the file name. */
     fun copyIn(context: Context, uri: Uri): String? = runCatching {
         val mime = context.contentResolver.getType(uri) ?: "image/jpeg"

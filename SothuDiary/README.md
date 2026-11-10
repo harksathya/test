@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.7.2
+# Sothu Diary (சொத்து டைரி) – v2.8.0
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -8,6 +8,24 @@ rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-t
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
+
+## What's new in v2.8.0
+
+- **Documents & EC check / ஆவணங்கள் & EC சோதனை** (property detail → Checks → *Documents & EC check*). Add the EC,
+  patta, chitta, adangal and sale deed as photos or PDF (photos are scaled to 2400 px). *Check documents* sends them
+  only to your own AI provider (Gemini, OpenAI, Claude, OpenRouter … – it must read images / PDF), which transcribes
+  every EC entry and what each document says. The app then works out, with fixed rules (tested in `V280Test`):
+  - the **ownership chain** for the survey number in Land details, oldest first: from → to, nature, year, document
+    number, sale value;
+  - **red flags** (High / Medium / Low, Tamil and English): break in the chain, mortgage without release, court order /
+    attachment, cancelled deed, sale by power agent, open power of attorney, sale agreement with no sale after it,
+    sale value drop, EC shorter than 30 years or older than 30 days, patta / chitta holder ≠ last buyer, patta or
+    survey number ≠ Land details, government / poramboke / temple land, extent differing between documents – plus
+    anything else the AI saw (marked *seen by AI*).
+  - Results are saved with the property; the documents and the check are never included in Share / .sothu files.
+  - A first reading, not a legal opinion: compare with the documents and have a lawyer verify the title.
+- Code: `domain/docs/DocAnalysis.kt` (rules, prompt, parsing), `domain/docs/DocAi.kt` (image / PDF requests for each
+  provider), `ui/screens/DocumentsScreen.kt`, `CheckRunner.docs`, `PlatformActions.pickDocument / readStoredFile`.
 
 ## What's new in v2.7.2
 

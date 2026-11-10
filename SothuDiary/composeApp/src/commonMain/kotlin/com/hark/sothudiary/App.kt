@@ -333,5 +333,6 @@ private fun RouteScreen(ctx: AppContext, r: Route) {
         is Route.LandCheck -> LandCheckScreen(ctx, r.propertyId)
         is Route.PriceCheck -> com.hark.sothudiary.ui.screens.PriceCheckScreen(ctx, r.propertyId)
         is Route.Guideline -> com.hark.sothudiary.ui.screens.GuidelineScreen(ctx, r.propertyId)
+        is Route.Documents -> com.hark.sothudiary.ui.screens.DocumentsScreen(ctx, r.propertyId)
     }
 }

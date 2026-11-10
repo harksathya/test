@@ -63,6 +63,20 @@ class DesktopPlatform : PlatformActions {
         val out = File(imagesDir, "img_" + System.currentTimeMillis() + "." + ext)
         onResult(runCatching { File(dir, name).copyTo(out); out.name }.getOrNull())
     }
+    override fun pickDocument(onResult: (PickedFile?) -> Unit) {
+        val dialog = FileDialog(null as Frame?, "Document (photo or PDF)", FileDialog.LOAD)
+        dialog.isVisible = true
+        val dir = dialog.directory
+        val name = dialog.file
+        if (dir == null || name == null) return onResult(null)
+        val ext = name.substringAfterLast('.', "jpg").lowercase().take(5)
+        val mime = when (ext) { "pdf" -> "application/pdf"; "png" -> "image/png"; "webp" -> "image/webp"; else -> "image/jpeg" }
+        imagesDir.mkdirs()
+        val out = File(imagesDir, "doc_" + System.currentTimeMillis() + "." + ext)
+        onResult(runCatching { File(dir, name).copyTo(out); PickedFile(out.name, mime, name) }.getOrNull())
+    }
+    override fun readStoredFile(fileName: String): ByteArray? =
+        if (fileName.isBlank() || fileName.contains('/')) null else File(imagesDir, fileName).takeIf { it.exists() }?.readBytes()
     override fun deleteImage(fileName: String) {
         if (fileName.isNotBlank() && !fileName.contains('/')) File(imagesDir, fileName).delete()
     }

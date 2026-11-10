@@ -2,6 +2,9 @@ package com.hark.sothudiary
 
 import androidx.compose.runtime.Composable
 
+/** 2.8.0: a file copied into app storage by [PlatformActions.pickDocument]. */
+data class PickedFile(val fileName: String, val mime: String, val displayName: String)
+
 /** Platform services the shared UI needs. Android and desktop provide their own implementation. */
 interface PlatformActions {
     /** Opens the dialer (Android) for this number. */
@@ -55,6 +58,12 @@ interface PlatformActions {
 
     /** 2.3.0: height / width of a stored image (to keep an FMB sketch's proportions on the map), null if unknown. */
     fun imageAspect(fileName: String): Double? = null
+
+    /** 2.8.0: lets the user pick a photo or PDF (EC, patta …); it is copied into app storage. Null when cancelled / unsupported. */
+    fun pickDocument(onResult: (PickedFile?) -> Unit) { onResult(null) }
+
+    /** 2.8.0: the bytes of a file in app storage (the images folder), or null when missing. */
+    fun readStoredFile(fileName: String): ByteArray? = null
 
     /** 2.4.0: a text file bundled with the app ("tn_villages": the LGD / GODL village directory), null if missing. */
     fun bundledText(name: String): String? = null

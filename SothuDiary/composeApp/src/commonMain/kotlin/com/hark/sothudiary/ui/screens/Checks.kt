@@ -246,6 +246,20 @@ fun CheckTilesRow(ctx: AppContext, p: Property, check: PriceCheck) {
             if (p.registry.guideline != null) MaterialTheme.colorScheme.primary else null, Modifier.weight(1f),
         ) { ctx.nav.push(Route.Guideline(p.id)) }
     }
+    // 2.8.0: documents and the EC / ownership check.
+    val docRunning = CheckRunner.isRunning("docs", p.id)
+    val flags = p.docAnalysis?.flags.orEmpty()
+    CheckTile(
+        Icons.Filled.FactCheck, com.hark.sothudiary.i18n.S8.docsTile.s(),
+        if (docRunning) S4.checking.s() else docsLine(p, lang),
+        when {
+            p.docAnalysis == null -> null
+            flags.any { it.level == com.hark.sothudiary.data.FlagLevel.HIGH } -> MaterialTheme.colorScheme.error
+            flags.any { it.level == com.hark.sothudiary.data.FlagLevel.MEDIUM } -> LocalBrand.current.warnText
+            else -> MaterialTheme.colorScheme.primary
+        },
+        Modifier.fillMaxWidth(),
+    ) { ctx.nav.push(Route.Documents(p.id)) }
 }
 
 @Composable

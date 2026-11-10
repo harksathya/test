@@ -80,6 +80,114 @@ data class Property(
      * are kept in step with it by the repository ([com.hark.sothudiary.data.reconcileLand]) so nothing is lost.
      */
     val land: LandRecord = LandRecord(),
+    /** 2.8.0: uploaded documents (EC, patta, chitta, adangal, sale deed), files in the images folder. */
+    val documents: List<PropertyDocument> = emptyList(),
+    /** 2.8.0: the last document check (ownership chain from the EC + red flags). */
+    val docAnalysis: DocAnalysis? = null,
+)
+
+/** 2.8.0: kinds of uploaded documents. */
+@Serializable
+enum class DocKind { EC, PATTA, CHITTA, ADANGAL, SALE_DEED, OTHER }
+
+/** 2.8.0: one uploaded document file (photo or PDF) of a property. */
+@Serializable
+data class PropertyDocument(
+    val id: String,
+    val kind: DocKind,
+    /** File name in the app's images folder. */
+    val fileName: String,
+    val mime: String = "image/jpeg",
+    val addedAt: Long = 0,
+    /** The name the file had on the phone (shown in the list). */
+    val displayName: String = "",
+)
+
+/** 2.8.0: one entry of an EC as read from the document. */
+@Serializable
+data class EcEntry(
+    val serial: String = "",
+    val docNo: String = "",
+    val year: Int? = null,
+    val date: String = "",
+    /** Nature of the document as printed. */
+    val nature: String = "",
+    /** [com.hark.sothudiary.domain.docs.Nature] code. */
+    val natureCode: String = "OTHER",
+    val executants: List<String> = emptyList(),
+    val claimants: List<String> = emptyList(),
+    val value: Long? = null,
+    val surveyNos: List<String> = emptyList(),
+    val extent: String = "",
+    val viaPowerAgent: Boolean = false,
+    /** For a release / receipt / cancellation: the document it refers to. */
+    val refDocNo: String = "",
+    val remarks: String = "",
+)
+
+/** 2.8.0: one transfer in the ownership chain (oldest first). */
+@Serializable
+data class OwnershipLink(
+    val docNo: String = "",
+    val year: Int? = null,
+    val date: String = "",
+    val nature: String = "",
+    val from: List<String> = emptyList(),
+    val to: List<String> = emptyList(),
+    val value: Long? = null,
+    val viaPowerAgent: Boolean = false,
+    val surveyNos: List<String> = emptyList(),
+)
+
+/** 2.8.0: what was read from a patta / chitta / adangal / sale deed. */
+@Serializable
+data class DocReading(
+    val kind: DocKind = DocKind.OTHER,
+    val holders: List<String> = emptyList(),
+    val pattaNo: String = "",
+    val surveyNos: List<String> = emptyList(),
+    val extent: String = "",
+    val landClass: String = "",
+    val village: String = "",
+    val docNo: String = "",
+    val date: String = "",
+    val value: Long? = null,
+    val notes: String = "",
+)
+
+@Serializable
+enum class FlagLevel { HIGH, MEDIUM, LOW }
+
+/** 2.8.0: a red flag, in English and Tamil. [byAi]: raised by the AI (not by the app's fixed rules). */
+@Serializable
+data class DocFlag(
+    val code: String,
+    val level: FlagLevel,
+    val en: String,
+    val ta: String,
+    /** Document number / page it is about. */
+    val ref: String = "",
+    val byAi: Boolean = false,
+)
+
+/** 2.8.0: result of a document check. */
+@Serializable
+data class DocAnalysis(
+    val analysedAt: Long = 0,
+    val provider: String = "",
+    val model: String = "",
+    /** Ids of the documents that were read. */
+    val docIds: List<String> = emptyList(),
+    val pattaNo: String = "",
+    val surveyNo: String = "",
+    val ecFrom: String = "",
+    val ecTo: String = "",
+    val entries: List<EcEntry> = emptyList(),
+    val chain: List<OwnershipLink> = emptyList(),
+    val docs: List<DocReading> = emptyList(),
+    val flags: List<DocFlag> = emptyList(),
+    val summaryEn: String = "",
+    val summaryTa: String = "",
 )
 
 /** 2.4.0: Land details / நில விவரம் – what the revenue and registration records call this land. */
