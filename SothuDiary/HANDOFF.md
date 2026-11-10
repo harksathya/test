@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 16:40 IST, by Hark (project agent), for the v2.8.0 commit (versionCode 18).
+Last updated: 2026-11-10 16:25 IST, by Hark (project agent). main = v2.8.0 `4d24c87` (versionCode 18).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -15,6 +15,7 @@ Last updated: 2026-11-10 16:40 IST, by Hark (project agent), for the v2.8.0 comm
 - CI workflow "Sothu Diary APK" builds every push to `main` (desktop tests, live endpoint probe printing
   `LIVE PROBE |` lines from `desktopTest/.../LiveEndpointsProbe.kt`, then the APK) and publishes `SothuDiary.apk` to
   release tag `sothu-diary-latest`. Check the run passed and the asset updated before saying a release is done.
+- Sandbox toolchain: `work/tools/setup-build.sh` (in the Hark project workspace) recreates JDK 17 + android.jar in /tmp and copies the project to /tmp/sd.
 - Run the desktop tests (`./gradlew :composeApp:compileKotlinDesktop :composeApp:desktopTest` from `SothuDiary/`,
   JDK 17, `sdk.dir` in git-ignored `local.properties`) and add tests for new logic (`commonTest/.../V2xxTest.kt`).
   Android-only code is compiled only by CI.
@@ -44,7 +45,7 @@ Last updated: 2026-11-10 16:40 IST, by Hark (project agent), for the v2.8.0 comm
   servers are now asked (maps.mail.ru 504, overpass-api.de 406, private.coffee timeout 41 s) – they all failed in that
   run, so EXTRA was still empty and the map step used the full 75 s budget. CORE came from tiles.
 
-- v2.8.0 (this commit; desktop compile + tests pass locally, Android compiled only by CI – check the run) – Documents
+- v2.8.0 `4d24c87` (CI run 42801541942 success; all 14 desktop test classes pass locally) – Documents
   & EC check: upload EC / patta / chitta / adangal / sale deed (photo or PDF), AI transcription with the user's
   provider, ownership chain + rule flags in common code (`domain/docs/DocAnalysis.kt`, `domain/docs/DocAi.kt`,
   `ui/screens/DocumentsScreen.kt`, `Route.Documents`, tile in `ui/screens/Checks.kt`, strings `i18n/Strings280.kt`,
