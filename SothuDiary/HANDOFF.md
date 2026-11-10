@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 19:15 IST, by Hark (project agent), for the v2.9.1 commit (versionCode 21).
+Last updated: 2026-11-10 19:50 IST, by Hark (project agent). main = v2.9.1 `ab41b61` (CI 42826017808 success). This commit adds only the Google Drive plan below.
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -77,6 +77,36 @@ Last updated: 2026-11-10 19:15 IST, by Hark (project agent), for the v2.9.1 comm
   network errors (`DocRules.NET_RETRY_WAITS_MS` 4 s, 10 s), `DocText.pagesDone` + `transcribeDoc(resume, onBatch)` save
   every batch and continue from the last page, "Ask again" button (`Repository.removeLastDocChat`), page JPEG 1400 px / 80.
   Still unknown why one 2-page call took 123 s (slow upload or Gemini thinking); if it repeats, try 1 page per call.
+
+## NEXT: Google Drive backup / sync (v3.0.0) – spec, nothing implemented yet
+Goal (owner, 2026-11-10): same Gmail on a new phone → all properties, photos, voice notes and documents come back.
+- Storage: the user's own Drive, hidden app folder `appDataFolder`, scope `https://www.googleapis.com/auth/drive.appdata`.
+  No server, no client secret.
+- Owner setup (Google Cloud console, one time): project → enable "Google Drive API" → OAuth consent screen (External,
+  testing; add tester Gmails) → Credentials → OAuth client ID, type Android, package `com.hark.sothudiary`,
+  SHA-1 `A0:3D:32:E0:1C:F5:4B:B0:60:EA:2D:43:C4:F9:CD:60:C9:74:29:0D` (from the committed `composeApp/sothu-release.jks`,
+  alias sothu, used by CI and local builds). Nothing needs to go into the code for an Android client.
+- Android sign-in: Google Identity Services `Identity.getAuthorizationClient(activity).authorize(AuthorizationRequest
+  .builder().setRequestedScopes(listOf(Scope(DRIVE_APPDATA))).build())`; if `hasResolution()` launch its PendingIntent
+  via the activity bridge (like openDocument); result → `accessToken`. Dependency `com.google.android.gms:play-services-auth`
+  (check the latest version). Save only the account email in settings, never the token; ask again when a call gets 401.
+- HTTP: `httpCall` sends/reads String bodies and caps answers at 4 MB → add `httpUploadBytes` / `httpDownloadBytes`
+  (expect/actual, Android HttpURLConnection, desktop the same) for files.
+- Drive REST v3: list `GET https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name,size,modifiedTime)&pageSize=1000`;
+  create `POST https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart` (metadata `{"name":..,"parents":["appDataFolder"]}`);
+  replace `PATCH https://www.googleapis.com/upload/drive/v3/files/{id}?uploadType=media`; download `GET .../drive/v3/files/{id}?alt=media`;
+  delete `DELETE .../drive/v3/files/{id}`.
+- Layout: `sothu_diary.json` (= `Repository.exportJson()`, includes docTexts / docChat) + one Drive file per stored file
+  (images/, voice/, documents use their unique file names, so upload only names not on Drive; delete Drive files no longer referenced).
+- Restore: after sign-in on a phone with no properties (or on "Restore from Drive"), download the JSON, `importJson`,
+  then download every referenced file into the matching folder. When both sides have data, ask: keep phone / use Drive /
+  merge by property id (newest `updatedAt` wins).
+- When: "Back up now" button + automatic backup 30 s after a change while signed in (debounced), only on the user's own
+  account; show "Last backup: time" in Settings. Settings card texts in Tamil + English (new `Strings300.kt`).
+- Tests: pure functions for the upload/delete diff and the merge (V300Test). Not testable here: sign-in (phone only).
+- Then (owner, 2026-11-10): an "AI key" card in Settings (provider, masked key ••••last4, model, Test key, Change),
+  today under Settings → Online services; and list where AI is used (Land check AI search, Price check / Area rates
+  online search, Documents & EC) so manual alternatives can be weighed.
 
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,
