@@ -44,9 +44,12 @@ suspend fun transcribeDoc(
     readWhole: (String) -> ByteArray?,
     pages: (String, Int, Int) -> Pair<Int, List<ByteArray>>?,
     onProgress: (Int, Int) -> Unit = { _, _ -> },
+    resume: DocText? = null,
+    onBatch: (DocText) -> Unit = {},
 ): Result<DocText> {
     val isPdf = d.mime == "application/pdf"
-    val first = if (isPdf) pages(d.fileName, 0, EcChatRules.PAGES_PER_CALL) else null
+    val start = resume?.takeIf { !it.complete && it.pagesDone > 0 }?.pagesDone ?: 0
+    val first = if (isPdf) pages(d.fileName, start, EcChatRules.PAGES_PER_CALL) else null
     if (first == null) {
         val bytes = readWhole(d.fileName) ?: return Result.failure(Exception("file missing"))
         onProgress(0, 0)
@@ -57,9 +60,9 @@ suspend fun transcribeDoc(
         }
     }
     val total = first.first
-    val out = StringBuilder()
-    var model = ""
-    var from = 0
+    val out = StringBuilder(if (start > 0) resume!!.text + "\n" else "")
+    var model = resume?.model.orEmpty()
+    var from = start
     var batch: List<ByteArray> = first.second
     while (from < total) {
         if (batch.isEmpty()) return Result.failure(Exception("page ${from + 1} could not be opened"))
@@ -68,8 +71,11 @@ suspend fun transcribeDoc(
         val r = readDocumentsWithAi(llm, transcribePrompt(d.kind, from + 1, to, total), batch.map { DocFile("image/jpeg", it, d.displayName) },
             EcChatRules.READ_TIMEOUT_MS, jsonOut = false)
         when (r) {
-            is DocAiResult.Ok -> { out.appendLine(r.text.trim()); model = r.model }
-            is DocAiResult.Failed -> return Result.failure(Exception("pages ${from + 1}–$to: " + r.message + (if (r.model.isNotBlank()) " · ${r.model}" else "")))
+            is DocAiResult.Ok -> {
+                out.appendLine(r.text.trim()); model = r.model
+                onBatch(DocText(d.id, total, out.toString().trim(), model, nowMillis(), pagesDone = to))
+            }
+            is DocAiResult.Failed -> return Result.failure(Exception("pages ${from + 1}–$to of $total: " + r.message + (if (r.model.isNotBlank()) " · ${r.model}" else "")))
         }
         from = to
         if (from < total) batch = pages(d.fileName, from, EcChatRules.PAGES_PER_CALL)?.second.orEmpty()

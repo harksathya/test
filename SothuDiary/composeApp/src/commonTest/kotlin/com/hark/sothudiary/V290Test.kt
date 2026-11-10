@@ -43,4 +43,12 @@ class V290Test {
         val t = transcribePrompt(DocKind.EC, 3, 4, 12)
         assertTrue("pages 3 to 4 of 12" in t && "=== Page N ===" in t && "Tamil" in t)
     }
+
+    /** 2.9.1: a reading cut after some pages is not complete and continues from there; old readings count as complete. */
+    @Test fun partialReadingResumes() {
+        assertTrue(DocText("d1", 10, "x").complete)
+        assertTrue(!DocText("d1", 10, "x", pagesDone = 4).complete)
+        assertTrue(DocText("d1", 10, "x", pagesDone = 10).complete)
+        assertTrue(com.hark.sothudiary.domain.docs.DocRules.NET_RETRY_WAITS_MS.isNotEmpty())
+    }
 }

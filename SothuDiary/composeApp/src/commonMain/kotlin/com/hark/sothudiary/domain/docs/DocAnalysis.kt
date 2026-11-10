@@ -41,6 +41,8 @@ object DocRules {
     const val MAX_MODELS = 3
     /** 2.8.1: all models together at most this long. */
     const val AI_BUDGET_MS = 360_000
+    /** 2.9.1: waits before asking again after a network error (phone lost the connection for a moment). */
+    val NET_RETRY_WAITS_MS = listOf(4_000L, 10_000L)
 }
 
 /** Nature of an EC entry, as a code (the AI picks one; [natureFromText] is the fallback from the printed words). */

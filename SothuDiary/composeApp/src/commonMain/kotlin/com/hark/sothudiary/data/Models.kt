@@ -92,7 +92,13 @@ data class Property(
 
 /** 2.9.0: text read from one uploaded document. */
 @Serializable
-data class DocText(val docId: String, val pages: Int = 0, val text: String = "", val model: String = "", val readAt: Long = 0)
+data class DocText(
+    val docId: String, val pages: Int = 0, val text: String = "", val model: String = "", val readAt: Long = 0,
+    /** 2.9.1: pages read so far (-1 = all); a reading cut by a lost connection continues from here. */
+    val pagesDone: Int = -1,
+) {
+    val complete: Boolean get() = pagesDone < 0 || pagesDone >= pages
+}
 
 /** 2.9.0: one message of the EC chat. */
 @Serializable

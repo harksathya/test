@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 19:05 IST, by Hark (project agent), for the v2.9.0 commit (versionCode 20).
+Last updated: 2026-11-10 19:15 IST, by Hark (project agent), for the v2.9.1 commit (versionCode 21).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -71,6 +71,12 @@ Last updated: 2026-11-10 19:05 IST, by Hark (project agent), for the v2.9.0 comm
   appDataFolder) so the same Gmail restores properties + documents on a new phone; owner must create a Google Cloud
   OAuth Android client (package com.hark.sothudiary? check applicationId + release SHA-1 from CI keystore). Then: a
   clear "AI key" card in Settings (masked key, Test, Change) – today it is under Settings → Online services.
+
+- v2.9.1 (this commit) – owner's phone test of 2.9.0: "EC: pages 1–2: no internet / DNS (Unable to resolve host
+  generativelanguage.googleapis.com) · 123 s · gemini-flash-latest" on mobile data. Fix: `readDocumentsWithAi` retries
+  network errors (`DocRules.NET_RETRY_WAITS_MS` 4 s, 10 s), `DocText.pagesDone` + `transcribeDoc(resume, onBatch)` save
+  every batch and continue from the last page, "Ask again" button (`Repository.removeLastDocChat`), page JPEG 1400 px / 80.
+  Still unknown why one 2-page call took 123 s (slow upload or Gemini thinking); if it repeats, try 1 page per call.
 
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,

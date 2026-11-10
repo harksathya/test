@@ -81,12 +81,13 @@ object CheckRunner {
     private suspend fun ensureDocTexts(repo: JsonRepository, pid: String, llm: com.hark.sothudiary.domain.ai.LlmConfig, platform: com.hark.sothudiary.PlatformActions): String? {
         val p = repo.data.properties.firstOrNull { it.id == pid } ?: return "property missing"
         for (d in p.documents) {
-            if (p.docTexts.any { it.docId == d.id && it.text.isNotBlank() }) continue
+            val prev = p.docTexts.firstOrNull { it.docId == d.id }
+            if (prev != null && prev.text.isNotBlank() && prev.complete) continue
             val label = d.kind.name.replace('_', ' ')
-            val r = com.hark.sothudiary.domain.docs.transcribeDoc(llm, d, { platform.readStoredFile(it) }, { f, from, n -> platform.pdfPageImages(f, from, n) }) { done, total ->
+            val r = com.hark.sothudiary.domain.docs.transcribeDoc(llm, d, { platform.readStoredFile(it) }, { f, from, n -> platform.pdfPageImages(f, from, n) }, onProgress = { done, total ->
                 val line = if (total > 0) "$label · ${done + 1}–${minOf(done + com.hark.sothudiary.domain.docs.EcChatRules.PAGES_PER_CALL, total)} / $total" else label
                 scope.launch { onMain { docProgress[pid] = line } }
-            }
+            }, resume = prev, onBatch = { t -> scope.launch { onMain { repo.saveDocText(pid, t) } } })
             val t = r.getOrElse { return "$label: " + (it.message ?: "error") }
             onMain { repo.saveDocText(pid, t) }
         }

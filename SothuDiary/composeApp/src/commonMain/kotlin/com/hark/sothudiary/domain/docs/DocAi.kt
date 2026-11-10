@@ -142,11 +142,20 @@ suspend fun readDocumentsWithAi(llm: LlmConfig, prompt: String, files: List<DocF
             }
         }
         val body = multimodalBody(p.style, m, prompt, files, jsonOut)
-        val r = httpCall(url, method = "POST", headers = headers, body = body, followRedirects = false, timeoutMs = callTimeout)
+        // 2.9.1: a dropped mobile connection (DNS, reset, refused) is retried on the same model after a short wait.
+        var r = httpCall(url, method = "POST", headers = headers, body = body, followRedirects = false, timeoutMs = callTimeout)
+        for (wait in DocRules.NET_RETRY_WAITS_MS) {
+            if (!r.failed || r.error == "timeout" || r.error == "cancelled") break
+            val leftNow = DocRules.AI_BUDGET_MS - (com.hark.sothudiary.data.nowMillis() - started)
+            if (leftNow < wait + 45_000) break
+            kotlinx.coroutines.delay(wait)
+            r = httpCall(url, method = "POST", headers = headers, body = body, followRedirects = false,
+                timeoutMs = minOf(timeoutMs.toLong(), leftNow - wait).toInt())
+        }
         if (r.failed) {
             val why = r.error ?: "no answer"
             last = DocAiResult.Failed((if (why == "timeout") "no answer in ${callTimeout / 1000} s (timeout)" else why) + " · ${r.ms / 1000} s", tried.joinToString(", "))
-            if (why.startsWith("no internet")) break
+            if (why != "timeout") break
             continue
         }
         if (r.ok) {

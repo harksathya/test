@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.9.0
+# Sothu Diary (சொத்து டைரி) – v2.9.1
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -8,6 +8,13 @@ rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-t
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
+
+## What's new in v2.9.1
+
+- **EC chat on mobile data:** the first phone test lost the connection after 123 s ("Unable to resolve host
+  generativelanguage.googleapis.com"). Now a network error is asked again after 4 s and 10 s; every 2 pages read are
+  saved at once, so the next question continues from the last page instead of starting over; an "Ask again" button
+  and a short hint appear after a failure. Page images are smaller (1400 px, JPEG 80) for faster upload.
 
 ## What's new in v2.9.0
 

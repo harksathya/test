@@ -62,7 +62,7 @@ import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.domain.dec
 
-const val APP_VERSION = "2.9.0"
+const val APP_VERSION = "2.9.1"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {

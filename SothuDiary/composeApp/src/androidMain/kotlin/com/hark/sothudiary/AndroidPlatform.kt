@@ -157,13 +157,13 @@ class AndroidPlatform(
                 for (i in from until minOf(from + count, total)) {
                     val page = r.openPage(i)
                     try {
-                        val w = 1600
+                        val w = 1400
                         val h = (w.toDouble() * page.height / page.width.coerceAtLeast(1)).toInt().coerceIn(1, 4000)
                         val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
                         bmp.eraseColor(android.graphics.Color.WHITE)
                         page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         val bos = java.io.ByteArrayOutputStream()
-                        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos)
+                        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, bos)
                         bmp.recycle()
                         out += bos.toByteArray()
                     } finally { page.close() }

@@ -19,6 +19,11 @@ object S9 {
     val reading = Tr("Reading {0}… {1} s", "படிக்கிறது {0}… {1} வி.")
     val answering = Tr("Answering… {0} s", "பதில் தயாராகிறது… {0} வி.")
     val failed = Tr("Could not answer: {0}", "பதில் கிடைக்கவில்லை: {0}")
+    val netHint = Tr(
+        "The phone lost the internet for a moment. Pages already read are saved – tap Ask again to continue.",
+        "இணையம் சிறிது நேரம் துண்டிக்கப்பட்டது. படித்த பக்கங்கள் சேமிக்கப்பட்டுள்ளன – தொடர மீண்டும் கேள் அழுத்தவும்.",
+    )
+    val retry = Tr("Ask again", "மீண்டும் கேள்")
     val clear = Tr("Clear chat", "உரையாடலை அழி")
     val reread = Tr("Read the documents again", "ஆவணங்களை மீண்டும் படி")
     val note = Tr("A first reading by AI, not legal advice – confirm with the SRO / a lawyer.", "AI-யின் முதல் வாசிப்பு, சட்ட ஆலோசனை அல்ல – சார்பதிவாளர் / வழக்கறிஞரிடம் உறுதி செய்யவும்.")

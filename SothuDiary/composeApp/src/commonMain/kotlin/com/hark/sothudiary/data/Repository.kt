@@ -337,6 +337,11 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
         d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(docTexts = emptyList()) else it })
     }
 
+    /** 2.9.1: drops the last chat message (an unanswered question that is asked again). */
+    fun removeLastDocChat(propertyId: String) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(docChat = it.docChat.dropLast(1)) else it })
+    }
+
     /** 2.9.0: clears the EC chat (the read text stays). */
     fun clearDocChat(propertyId: String) = update { d ->
         d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(docChat = emptyList()) else it })

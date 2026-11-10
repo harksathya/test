@@ -305,7 +305,7 @@ private fun EcChatCard(ctx: AppContext, p: Property) {
     SectionCard(S9.chatTitle.s(), icon = Icons.Filled.FactCheck) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(S9.chatHint.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            val read = p.docTexts.filter { t -> p.documents.any { it.id == t.docId } }
+            val read = p.docTexts.filter { t -> t.complete && p.documents.any { it.id == t.docId } }
             if (read.size < p.documents.size) Text(S9.firstRead.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else Text(S9.readDone.format(lang, read.sumOf { it.pages }, read.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -322,7 +322,15 @@ private fun EcChatCard(ctx: AppContext, p: Property) {
                 val step = CheckRunner.docProgress[p.id]
                 Text(if (step != null && step != "answer") S9.reading.format(lang, step, secs) else S9.answering.format(lang, secs), style = MaterialTheme.typography.bodySmall)
             }
-            if (error != null && !asking) Text(S9.failed.format(lang, error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (error != null && !asking) {
+                Text(S9.failed.format(lang, error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                val net = "no internet" in error || "DNS" in error || "connection" in error || "timeout" in error
+                if (net) Text(S9.netHint.s(), style = MaterialTheme.typography.bodySmall, color = LocalBrand.current.warnText)
+                val lastQ = p.docChat.lastOrNull()?.takeIf { it.fromUser }?.text
+                if (lastQ != null) OutlinedButton(onClick = {
+                    ctx.repo.removeLastDocChat(p.id); CheckRunner.askDocs(ctx.repo, ctx.repo.data.properties.first { it.id == p.id }, lastQ, ctx.platform)
+                }, enabled = !busy) { Text(S9.retry.s()) }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.material3.OutlinedTextField(q, { q = it }, modifier = Modifier.weight(1f), placeholder = { Text(S9.placeholder.s()) }, maxLines = 4)
                 Spacer(Modifier.width(6.dp))
