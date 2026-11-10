@@ -130,7 +130,7 @@ fun DocumentsScreen(ctx: AppContext, propertyId: String) {
                     else Text(S8.privacy.format(lang, llm.provider.name), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(
                         enabled = llm.hasKey && p.documents.isNotEmpty() && !running,
-                        onClick = { CheckRunner.docs(ctx.repo, p) { ctx.platform.readStoredFile(it) } },
+                        onClick = { CheckRunner.docs(ctx.repo, p, ctx.platform) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(Icons.Filled.FactCheck, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
@@ -141,11 +141,15 @@ fun DocumentsScreen(ctx: AppContext, propertyId: String) {
                         var now by remember { mutableStateOf(nowMillis()) }
                         androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1000); now = nowMillis() } }
                         val since = CheckRunner.running["docs:${p.id}"] ?: now
-                        Text(S8.analysing.format(lang, ((now - since) / 1000).coerceAtLeast(0)), style = MaterialTheme.typography.bodySmall)
+                        val step = CheckRunner.docProgress[p.id]
+                        val secs = ((now - since) / 1000).coerceAtLeast(0)
+                        Text(if (step != null && step != "analysis") com.hark.sothudiary.i18n.S9.reading.format(lang, step, secs) else S8.analysing.format(lang, secs),
+                            style = MaterialTheme.typography.bodySmall)
                     }
                     if (error != null && !running) Text(S8.failed.format(lang, error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
+            if (p.documents.isNotEmpty() && llm.hasKey) EcChatCard(ctx, p)
             val a = p.docAnalysis
             if (a != null) {
                 if (a.docIds.toSet() != p.documents.map { it.id }.toSet())
@@ -283,6 +287,71 @@ private fun ChainRow(n: Int, c: OwnershipLink) {
             val extra = listOfNotNull(c.value?.let { S8.value.s() + " " + rupees(it) }, c.date.ifBlank { null },
                 S8.viaPower.s().takeIf { c.viaPowerAgent }, c.surveyNos.takeIf { it.isNotEmpty() }?.let { "S.F. " + it.joinToString(", ") })
             if (extra.isNotEmpty()) Text(extra.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** 2.9.0: ChatGPT-like questions about the uploaded documents, answered from their saved text. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EcChatCard(ctx: AppContext, p: Property) {
+    val lang = LocalLang.current
+    val S9 = com.hark.sothudiary.i18n.S9
+    var q by remember(p.id) { mutableStateOf("") }
+    val asking = CheckRunner.isRunning("ask", p.id)
+    val busy = asking || CheckRunner.isRunning("docs", p.id)
+    val error = CheckRunner.chatErrors[p.id]
+    fun ask(text: String) { if (text.isNotBlank() && !busy) { CheckRunner.askDocs(ctx.repo, p, text, ctx.platform); q = "" } }
+    SectionCard(S9.chatTitle.s(), icon = Icons.Filled.FactCheck) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(S9.chatHint.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val read = p.docTexts.filter { t -> p.documents.any { it.id == t.docId } }
+            if (read.size < p.documents.size) Text(S9.firstRead.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else Text(S9.readDone.format(lang, read.sumOf { it.pages }, read.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                com.hark.sothudiary.domain.docs.quickQuestions(p.land, lang == Lang.TA).forEach { s ->
+                    androidx.compose.material3.SuggestionChip(onClick = { ask(s) }, enabled = !busy, label = { Text(s, style = MaterialTheme.typography.labelSmall) })
+                }
+            }
+            p.docChat.forEach { m -> ChatBubble(m, lang) }
+            if (asking) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                var now by remember { mutableStateOf(nowMillis()) }
+                androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1000); now = nowMillis() } }
+                val secs = (((now - (CheckRunner.running["ask:${p.id}"] ?: now))) / 1000).coerceAtLeast(0)
+                val step = CheckRunner.docProgress[p.id]
+                Text(if (step != null && step != "answer") S9.reading.format(lang, step, secs) else S9.answering.format(lang, secs), style = MaterialTheme.typography.bodySmall)
+            }
+            if (error != null && !asking) Text(S9.failed.format(lang, error), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.OutlinedTextField(q, { q = it }, modifier = Modifier.weight(1f), placeholder = { Text(S9.placeholder.s()) }, maxLines = 4)
+                Spacer(Modifier.width(6.dp))
+                Button(onClick = { ask(q) }, enabled = q.isNotBlank() && !busy) { Text(S9.send.s()) }
+            }
+            Row {
+                if (p.docChat.isNotEmpty()) TextButton(onClick = { ctx.repo.clearDocChat(p.id); CheckRunner.chatErrors.remove(p.id) }, enabled = !busy) { Text(S9.clear.s()) }
+                if (p.docTexts.isNotEmpty()) TextButton(onClick = { ctx.repo.clearDocTexts(p.id) }, enabled = !busy) { Text(S9.reread.s()) }
+            }
+            Text(S9.note.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ChatBubble(m: com.hark.sothudiary.data.DocChatMsg, lang: Lang) {
+    val S9 = com.hark.sothudiary.i18n.S9
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromUser) Arrangement.End else Arrangement.Start) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = if (m.fromUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.widthIn(max = 520.dp),
+        ) {
+            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Text(if (m.fromUser) S9.you.s() else S9.ai.format(lang, m.model), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(m.text.replace("**", ""), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         }
     }
 }

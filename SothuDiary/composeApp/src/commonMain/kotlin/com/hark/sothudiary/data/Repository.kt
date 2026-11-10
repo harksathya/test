@@ -322,9 +322,29 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
         d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(documents = it.documents + doc, updatedAt = nowMillis()) else it })
     }
 
+    /** 2.9.0: saves the text read from one document (replaces an older reading of it). */
+    fun saveDocText(propertyId: String, t: DocText) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(docTexts = it.docTexts.filterNot { x -> x.docId == t.docId } + t) else it })
+    }
+
+    /** 2.9.0: adds a message to the EC chat. */
+    fun addDocChat(propertyId: String, m: DocChatMsg) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(docChat = it.docChat + m) else it })
+    }
+
+    /** 2.9.0: forgets the read text so the documents are read again on the next question. */
+    fun clearDocTexts(propertyId: String) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(docTexts = emptyList()) else it })
+    }
+
+    /** 2.9.0: clears the EC chat (the read text stays). */
+    fun clearDocChat(propertyId: String) = update { d ->
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(docChat = emptyList()) else it })
+    }
+
     /** 2.8.0: removes an uploaded document (the file itself is deleted by the caller). */
     fun removeDocument(propertyId: String, docId: String) = update { d ->
-        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(documents = it.documents.filterNot { x -> x.id == docId }, updatedAt = nowMillis()) else it })
+        d.copy(properties = d.properties.map { if (it.id == propertyId) it.copy(documents = it.documents.filterNot { x -> x.id == docId }, docTexts = it.docTexts.filterNot { x -> x.docId == docId }, updatedAt = nowMillis()) else it })
     }
 
     /** 2.8.0: saves the last document check. */

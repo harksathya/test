@@ -80,8 +80,8 @@ android {
         applicationId = "com.hark.sothudiary"
         minSdk = 24
         targetSdk = 34
-        versionCode = 19
-        versionName = "2.8.1"
+        versionCode = 20
+        versionName = "2.9.0"
         // Phones are ARM; dropping x86 keeps ML Kit's native OCR libraries out of the APK for emulators only.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -129,7 +129,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "SothuDiary"
-            packageVersion = "2.8.1"
+            packageVersion = "2.9.0"
         }
     }
 }

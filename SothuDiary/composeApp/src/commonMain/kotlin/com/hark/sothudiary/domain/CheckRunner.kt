@@ -72,7 +72,37 @@ object CheckRunner {
      * 2.8.0: reads the property's uploaded documents with the user's AI provider and checks them ([buildAnalysis]).
      * Runs in the app-wide scope like the land check, so leaving the screen does not stop it.
      */
-    fun docs(repo: JsonRepository, p: Property, readFile: (String) -> ByteArray?) {
+    /** 2.9.0: progress of reading documents ("EC · pages 3–4 of 12"), by property id. */
+    val docProgress = mutableStateMapOf<String, String>()
+    /** 2.9.0: last EC chat error, by property id. */
+    val chatErrors = mutableStateMapOf<String, String>()
+
+    /** 2.9.0: reads every document that has no saved text yet (page by page). Returns an error or null. */
+    private suspend fun ensureDocTexts(repo: JsonRepository, pid: String, llm: com.hark.sothudiary.domain.ai.LlmConfig, platform: com.hark.sothudiary.PlatformActions): String? {
+        val p = repo.data.properties.firstOrNull { it.id == pid } ?: return "property missing"
+        for (d in p.documents) {
+            if (p.docTexts.any { it.docId == d.id && it.text.isNotBlank() }) continue
+            val label = d.kind.name.replace('_', ' ')
+            val r = com.hark.sothudiary.domain.docs.transcribeDoc(llm, d, { platform.readStoredFile(it) }, { f, from, n -> platform.pdfPageImages(f, from, n) }) { done, total ->
+                val line = if (total > 0) "$label · ${done + 1}–${minOf(done + com.hark.sothudiary.domain.docs.EcChatRules.PAGES_PER_CALL, total)} / $total" else label
+                scope.launch { onMain { docProgress[pid] = line } }
+            }
+            val t = r.getOrElse { return "$label: " + (it.message ?: "error") }
+            onMain { repo.saveDocText(pid, t) }
+        }
+        return null
+    }
+
+    private fun docPairs(repo: JsonRepository, pid: String): Pair<Property, List<Pair<com.hark.sothudiary.data.PropertyDocument, com.hark.sothudiary.data.DocText>>>? {
+        val p = repo.data.properties.firstOrNull { it.id == pid } ?: return null
+        return p to p.documents.mapNotNull { d -> p.docTexts.firstOrNull { it.docId == d.id }?.let { d to it } }
+    }
+
+    /**
+     * 2.8.0: "Check documents" – ownership chain + red flags. 2.9.0: the documents are first read page by page and
+     * saved as text ([ensureDocTexts]); the check itself is then one text-only call.
+     */
+    fun docs(repo: JsonRepository, p: Property, platform: com.hark.sothudiary.PlatformActions) {
         val k = "docs:${p.id}"
         if (running.containsKey(k) || p.documents.isEmpty()) return
         running[k] = nowMillis()
@@ -80,14 +110,14 @@ object CheckRunner {
         val llm = repo.data.settings.llm()
         scope.launch {
             try {
-                // EC first (the chain comes from it), then the revenue records, then the deeds.
-                val order = listOf(com.hark.sothudiary.data.DocKind.EC, com.hark.sothudiary.data.DocKind.PATTA, com.hark.sothudiary.data.DocKind.CHITTA,
-                    com.hark.sothudiary.data.DocKind.ADANGAL, com.hark.sothudiary.data.DocKind.SALE_DEED, com.hark.sothudiary.data.DocKind.OTHER)
-                val docs = p.documents.sortedBy { order.indexOf(it.kind) }
-                val files = docs.mapNotNull { d -> readFile(d.fileName)?.let { d to com.hark.sothudiary.domain.docs.DocFile(d.mime, it, d.displayName) } }
-                if (files.isEmpty()) { onMain { docErrors[p.id] = "files missing" }; return@launch }
-                val prompt = com.hark.sothudiary.domain.docs.analysisPrompt(p.land, files.map { it.first.kind }, p.title)
-                when (val r = com.hark.sothudiary.domain.docs.readDocumentsWithAi(llm, prompt, files.map { it.second })) {
+                ensureDocTexts(repo, p.id, llm, platform)?.let { e -> onMain { docErrors[p.id] = e }; return@launch }
+                val (fresh, pairs) = docPairs(repo, p.id) ?: return@launch
+                if (pairs.isEmpty()) { onMain { docErrors[p.id] = "files missing" }; return@launch }
+                onMain { docProgress[p.id] = "analysis" }
+                val prompt = com.hark.sothudiary.domain.docs.analysisPrompt(fresh.land, pairs.map { it.first.kind }, fresh.title) +
+                    "\n\nThe documents are given below as text (read from the files earlier), not as attached files.\n" +
+                    com.hark.sothudiary.domain.docs.documentsBlock(pairs)
+                when (val r = com.hark.sothudiary.domain.docs.askText(llm, prompt)) {
                     is com.hark.sothudiary.domain.docs.DocAiResult.Failed -> onMain { docErrors[p.id] = r.message + (if (r.model.isNotBlank()) " · ${r.model}" else "") }
                     is com.hark.sothudiary.domain.docs.DocAiResult.Ok -> {
                         val reading = com.hark.sothudiary.domain.docs.parseAiReading(r.text)
@@ -96,8 +126,8 @@ object CheckRunner {
                             val today = kotlinx.datetime.Clock.System.now()
                                 .toLocalDateTime(kotlinx.datetime.TimeZone.currentSystemDefault()).date.toString()
                             val a = com.hark.sothudiary.domain.docs.buildAnalysis(
-                                reading, p.land, hasEc = files.any { it.first.kind == com.hark.sothudiary.data.DocKind.EC }, now = today,
-                                analysedAt = nowMillis(), provider = llm.provider.name, model = r.model, docIds = files.map { it.first.id },
+                                reading, fresh.land, hasEc = pairs.any { it.first.kind == com.hark.sothudiary.data.DocKind.EC }, now = today,
+                                analysedAt = nowMillis(), provider = llm.provider.name, model = r.model, docIds = pairs.map { it.first.id },
                             )
                             onMain { repo.saveDocAnalysis(p.id, a) }
                         }
@@ -108,7 +138,37 @@ object CheckRunner {
             } catch (e: Throwable) {
                 withContext(Dispatchers.Main) { docErrors[p.id] = e.message ?: "error" }
             } finally {
-                withContext(Dispatchers.Main) { running.remove(k) }
+                withContext(Dispatchers.Main) { running.remove(k); docProgress.remove(p.id) }
+            }
+        }
+    }
+
+    /** 2.9.0: one EC chat question – reads unread documents first, then answers from the saved text. */
+    fun askDocs(repo: JsonRepository, p: Property, question: String, platform: com.hark.sothudiary.PlatformActions) {
+        val k = "ask:${p.id}"
+        val q = question.trim()
+        if (running.containsKey(k) || q.isEmpty() || p.documents.isEmpty()) return
+        running[k] = nowMillis()
+        chatErrors.remove(p.id)
+        val history = p.docChat
+        repo.addDocChat(p.id, com.hark.sothudiary.data.DocChatMsg(true, q, nowMillis()))
+        val llm = repo.data.settings.llm()
+        scope.launch {
+            try {
+                ensureDocTexts(repo, p.id, llm, platform)?.let { e -> onMain { chatErrors[p.id] = e }; return@launch }
+                val (fresh, pairs) = docPairs(repo, p.id) ?: return@launch
+                onMain { docProgress[p.id] = "answer" }
+                val prompt = com.hark.sothudiary.domain.docs.chatPrompt(fresh.land, fresh.title, pairs, history, q)
+                when (val r = com.hark.sothudiary.domain.docs.askText(llm, prompt)) {
+                    is com.hark.sothudiary.domain.docs.DocAiResult.Ok -> onMain { repo.addDocChat(p.id, com.hark.sothudiary.data.DocChatMsg(false, r.text, nowMillis(), r.model)) }
+                    is com.hark.sothudiary.domain.docs.DocAiResult.Failed -> onMain { chatErrors[p.id] = r.message + (if (r.model.isNotBlank()) " · ${r.model}" else "") }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                withContext(Dispatchers.Main) { chatErrors[p.id] = e.message ?: "error" }
+            } finally {
+                withContext(Dispatchers.Main) { running.remove(k); docProgress.remove(p.id) }
             }
         }
     }

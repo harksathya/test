@@ -446,6 +446,7 @@ fun PropertyDetailScreen(ctx: AppContext, id: String) {
                     data.interactions.filter { it.propertyId == p.id }.flatMap { it.voiceNotes }.forEach { ctx.platform.audio.deleteAudio(it.fileName) }
                     if (p.imageFile.isNotBlank()) ctx.platform.deleteImage(p.imageFile)
                     p.photos.forEach { ctx.platform.deleteImage(it) }
+                    p.documents.forEach { ctx.platform.deleteImage(it.fileName) } // 2.9.0: uploaded documents too
                     ctx.repo.deleteProperty(p.id)
                     ctx.nav.pop()
                 }) {

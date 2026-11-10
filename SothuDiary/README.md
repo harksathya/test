@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.8.1
+# Sothu Diary (சொத்து டைரி) – v2.9.0
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -8,6 +8,17 @@ rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-t
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
+
+## What's new in v2.9.0
+
+- **EC chat (Ask about the EC):** on the Documents screen, ask questions like ChatGPT – a survey No., patta No., a
+  name, a year, a document No., or "full analysis". Follow-up questions keep the last 10 messages; the chat is
+  saved per property. Quick chips: trace the survey No., patta entries, full analysis, current owner, loans /
+  court attachments, every survey No. in the EC.
+- **Page-by-page reading:** a PDF is opened on the phone (Android PdfRenderer) and sent 2 pages per AI call; the
+  text is saved, so later questions and "Check documents" are one fast text-only call (works with any provider).
+  "Read the documents again" forgets the saved text.
+- Deleting a property now deletes its document files too. The read text and chat are never shared.
 
 ## What's new in v2.8.1
 

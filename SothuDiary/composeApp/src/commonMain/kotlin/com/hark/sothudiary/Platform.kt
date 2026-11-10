@@ -65,6 +65,12 @@ interface PlatformActions {
     /** 2.8.0: the bytes of a file in app storage (the images folder), or null when missing. */
     fun readStoredFile(fileName: String): ByteArray? = null
 
+    /**
+     * 2.9.0: [count] pages of a stored PDF from page [from] (0-based) as JPEG images, with the PDF's page count; null
+     * where pages cannot be rendered (desktop) – the whole PDF is then sent in one request.
+     */
+    fun pdfPageImages(fileName: String, from: Int, count: Int): Pair<Int, List<ByteArray>>? = null
+
     /** 2.4.0: a text file bundled with the app ("tn_villages": the LGD / GODL village directory), null if missing. */
     fun bundledText(name: String): String? = null
 

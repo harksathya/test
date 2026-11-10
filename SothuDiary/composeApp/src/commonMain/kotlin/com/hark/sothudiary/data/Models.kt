@@ -84,7 +84,19 @@ data class Property(
     val documents: List<PropertyDocument> = emptyList(),
     /** 2.8.0: the last document check (ownership chain from the EC + red flags). */
     val docAnalysis: DocAnalysis? = null,
+    /** 2.9.0: the text the AI read from each document (page by page), kept so questions need no re-upload. */
+    val docTexts: List<DocText> = emptyList(),
+    /** 2.9.0: the EC chat (questions and answers about the documents). */
+    val docChat: List<DocChatMsg> = emptyList(),
 )
+
+/** 2.9.0: text read from one uploaded document. */
+@Serializable
+data class DocText(val docId: String, val pages: Int = 0, val text: String = "", val model: String = "", val readAt: Long = 0)
+
+/** 2.9.0: one message of the EC chat. */
+@Serializable
+data class DocChatMsg(val fromUser: Boolean, val text: String, val at: Long = 0, val model: String = "")
 
 /** 2.8.0: kinds of uploaded documents. */
 @Serializable

@@ -34,7 +34,7 @@ private fun b64(bytes: ByteArray): String = Base64.encode(bytes)
  * Request body with the prompt and the files, in the provider's own format: Gemini inline_data (images and PDF),
  * OpenAI-compatible image_url / file parts, Anthropic image / document blocks.
  */
-fun multimodalBody(style: ApiStyle, model: String, prompt: String, files: List<DocFile>): String = when (style) {
+fun multimodalBody(style: ApiStyle, model: String, prompt: String, files: List<DocFile>, jsonOut: Boolean = true): String = when (style) {
     ApiStyle.GEMINI -> buildJsonObject {
         put("contents", buildJsonArray {
             add(buildJsonObject {
@@ -44,7 +44,7 @@ fun multimodalBody(style: ApiStyle, model: String, prompt: String, files: List<D
                 })
             })
         })
-        put("generationConfig", buildJsonObject { put("temperature", 0.0); put("responseMimeType", "application/json") })
+        put("generationConfig", buildJsonObject { put("temperature", 0.0); if (jsonOut) put("responseMimeType", "application/json") })
     }
     ApiStyle.ANTHROPIC -> buildJsonObject {
         put("model", model)
@@ -108,7 +108,7 @@ fun tryNextModel(code: Int): Boolean = code < 0 || code == 400 || code == 404 ||
  * Sends the files and [prompt] to the chosen provider. Tries up to [DocRules.MAX_MODELS] models; stops on a refused
  * key. 2.8.1: uses [httpCall] so the real reason of a failed call (timeout, DNS, TLS …) is shown, not "no internet".
  */
-suspend fun readDocumentsWithAi(llm: LlmConfig, prompt: String, files: List<DocFile>, timeoutMs: Int = DocRules.AI_TIMEOUT_MS): DocAiResult {
+suspend fun readDocumentsWithAi(llm: LlmConfig, prompt: String, files: List<DocFile>, timeoutMs: Int = DocRules.AI_TIMEOUT_MS, jsonOut: Boolean = true): DocAiResult {
     if (!llm.hasKey) return DocAiResult.Failed("no AI key")
     if (files.isEmpty()) return DocAiResult.Failed("no documents")
     val total = files.sumOf { it.bytes.size }
@@ -141,7 +141,7 @@ suspend fun readDocumentsWithAi(llm: LlmConfig, prompt: String, files: List<DocF
                 ApiStyle.ANTHROPIC -> { put("x-api-key", llm.apiKey.trim()); put("anthropic-version", "2023-06-01") }
             }
         }
-        val body = multimodalBody(p.style, m, prompt, files)
+        val body = multimodalBody(p.style, m, prompt, files, jsonOut)
         val r = httpCall(url, method = "POST", headers = headers, body = body, followRedirects = false, timeoutMs = callTimeout)
         if (r.failed) {
             val why = r.error ?: "no answer"

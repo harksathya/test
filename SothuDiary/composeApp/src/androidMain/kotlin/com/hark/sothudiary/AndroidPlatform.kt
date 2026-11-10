@@ -143,6 +143,36 @@ class AndroidPlatform(
         return if (f.exists()) runCatching { f.readBytes() }.getOrNull() else null
     }
 
+    /** 2.9.0: PDF pages as JPEG (1600 px wide, white background) for page-by-page reading of a long EC. */
+    override fun pdfPageImages(fileName: String, from: Int, count: Int): Pair<Int, List<ByteArray>>? {
+        if (fileName.isBlank() || fileName.contains('/')) return null
+        val f = java.io.File(AndroidImages.dir(context), fileName)
+        if (!f.exists()) return null
+        return runCatching {
+            val fd = android.os.ParcelFileDescriptor.open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+            val r = android.graphics.pdf.PdfRenderer(fd)
+            try {
+                val total = r.pageCount
+                val out = mutableListOf<ByteArray>()
+                for (i in from until minOf(from + count, total)) {
+                    val page = r.openPage(i)
+                    try {
+                        val w = 1600
+                        val h = (w.toDouble() * page.height / page.width.coerceAtLeast(1)).toInt().coerceIn(1, 4000)
+                        val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                        bmp.eraseColor(android.graphics.Color.WHITE)
+                        page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        val bos = java.io.ByteArrayOutputStream()
+                        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos)
+                        bmp.recycle()
+                        out += bos.toByteArray()
+                    } finally { page.close() }
+                }
+                total to out
+            } finally { r.close(); fd.close() }
+        }.getOrNull()
+    }
+
     override fun imageAspect(fileName: String): Double? {
         val path = imagePath(fileName) ?: return null
         val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }

@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 18:45 IST, by Hark (project agent), for the v2.8.1 commit (versionCode 19).
+Last updated: 2026-11-10 19:05 IST, by Hark (project agent), for the v2.9.0 commit (versionCode 20).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -58,6 +58,19 @@ Last updated: 2026-11-10 18:45 IST, by Hark (project agent), for the v2.8.1 comm
   (the reason was dropped). `domain/docs/DocAi.kt` now uses `httpCall` and shows the reason + seconds, timeout 240 s,
   falls back to up to 2 more models (`tryNextModel`), total budget 6 min (`DocRules.AI_BUDGET_MS`). NEXT: ask the
   owner for the new error text if it still fails; if it is a timeout, send the EC in page batches or lower thinking.
+
+- v2.9.0 (this commit; desktop tests pass locally; Android code only compiled by CI) – EC chat. Files:
+  `domain/docs/EcChat.kt` (transcribePrompt, transcribeDoc page batching, documentsBlock, chatPrompt, askText,
+  quickQuestions), `CheckRunner.askDocs` / `ensureDocTexts` / `docProgress` / `chatErrors` (docs() now reads text first,
+  then one text call), `Property.docTexts` + `docChat` (`DocText`, `DocChatMsg`), Repository saveDocText / addDocChat /
+  clearDocChat / clearDocTexts, `PlatformActions.pdfPageImages` (Android PdfRenderer; desktop null → whole file),
+  `DocumentsScreen.EcChatCard`, `i18n/Strings290.kt` (S9), V290Test. Property delete removes document files.
+  UNVERIFIED on phone: PdfRenderer on scanned TN EC PDFs, Gemini free-tier rate limit with many 2-page calls
+  (a 30-page EC = 15 calls), answer quality in Tamil.
+- NEXT (agreed with owner 2026-11-10): Google Drive backup/sync to the user's own Drive (Google sign-in,
+  appDataFolder) so the same Gmail restores properties + documents on a new phone; owner must create a Google Cloud
+  OAuth Android client (package com.hark.sothudiary? check applicationId + release SHA-1 from CI keystore). Then: a
+  clear "AI key" card in Settings (masked key, Test, Change) – today it is under Settings → Online services.
 
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,
