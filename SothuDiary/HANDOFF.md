@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 21:15 IST, by Hark (project agent). main = v3.0.1 (this commit; CI pending at time of writing). v3.0.0 `e7908ff` CI 42840196706 success (APK + desktop tests incl. V300Test passed, APK asset published from e7908ff).
+Last updated: 2026-11-10 20:52 IST, by Hark (project agent). main before this doc-only commit = v3.0.1 `ad83423` (CI 42841804054 success, APK asset published from ad83423). v3.0.0 `e7908ff` CI 42840196706 success. Stopped here: Hark monthly usage pool reached 95%.
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -78,7 +78,7 @@ Last updated: 2026-11-10 21:15 IST, by Hark (project agent). main = v3.0.1 (this
   every batch and continue from the last page, "Ask again" button (`Repository.removeLastDocChat`), page JPEG 1400 px / 80.
   Still unknown why one 2-page call took 123 s (slow upload or Gemini thinking); if it repeats, try 1 page per call.
 
-## v3.0.1 AI key card (this commit)
+## v3.0.1 AI key card – `ad83423`, CI 42841804054 success (APK + desktop tests incl. V301Test)
 - `ui/screens/AiKeyCard.kt` (`AiKeyCard`, `maskKey`), `i18n/Strings301.kt` (S31), SettingsScreen: the provider / key /
   model editor moved from Online services into the card's `editor` slot (opens on Change, or when there is no key);
   Online services keeps the YouTube key and saved rates. Test key = `listModels(provider, key)` non-empty. `V301Test`.
@@ -127,14 +127,18 @@ Last updated: 2026-11-10 21:15 IST, by Hark (project agent). main = v3.0.1 (this
 - One AI search with a real non-Gemini provider key.
 
 ## In progress
+- Nothing half-done in code. v3.0.0 Drive backup and v3.0.1 AI key card are complete and green on CI; both wait for the owner's phone test (see their sections).
 - v2.8.0 needs a real test on the phone with a real EC (Tamil) and a Gemini key – not done yet. Open points:
   (a) not verified which providers accept PDF (Gemini and Claude do by their docs; OpenAI-style `file` parts work on
   OpenAI / OpenRouter but Groq / DeepSeek may refuse images – the error is shown on the screen);
   (c) a very long EC (many pages) may exceed the model's output limit – then the JSON is cut and "the AI answer could
   not be read" is shown; a fix would be to send the EC in page batches;
-  (d) no "open the file" button yet on the Documents list.
+  (d) no "open the file" button yet on the Documents list (not done). (b) was fixed in v2.9.0 (property delete removes document files).
 
 ## Yet to start
-- EXTRA map layers from OpenFreeMap tiles (see Not working).
+- EXTRA map layers from OpenFreeMap tiles (see Not working) – NOT started (agent stopped at 95% usage). Plan: in
+  `domain/land/VectorTiles.kt` decode OpenMapTiles `poi` (class school/hospital/bus/marketplace…), `transportation`
+  (class rail) and `park` (protected areas) into LandFeature categories, call it from `fetchOsmLayers` when the EXTRA
+  Overpass group fails (like `coreFallback`), add a V302Test with a fixture tile; power lines stay Overpass-only.
 - Other ideas offered, not chosen yet: offline Tamil OCR (Tesseract4Android), reminders for follow-ups, price
   comparison chart.
