@@ -626,6 +626,8 @@ fun LandCheckScreen(ctx: AppContext, propertyId: String) {
                 Text(if (assessment == null) S.runLandCheck.s() else S.refreshLandCheck.s())
             }
             Text(S.landDisclaimer.s(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 2.7.1: ODbL attribution for the OpenStreetMap data (Overpass and OpenFreeMap tiles).
+            Text(com.hark.sothudiary.i18n.S71.mapCredit.s(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row {
                 TextButton(onClick = { ctx.platform.openUrl(TN_ESERVICES_URL) }) { Text(S.openEservices.s()) }
             }

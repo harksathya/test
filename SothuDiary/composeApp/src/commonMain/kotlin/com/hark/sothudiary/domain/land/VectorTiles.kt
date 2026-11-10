@@ -44,10 +44,14 @@ object VectorTileRules {
     const val WIDE_RADIUS_M = 5_000.0
     /** At most this many tiles per zoom (a huge plot / radius is cut to the tiles nearest the pin). */
     const val MAX_TILES = 9
-    /** Overpass gets this long for the CORE group before the tiles are fetched as well. */
-    const val HEDGE_MS = 20_000L
+    /**
+     * Overpass gets this long for the CORE group before the tiles are fetched as well. 2.7.1: 3 s (was 20 s) – the 2.7.0
+     * CI probe had every Overpass server fail (406 / 504 / timeout) while the tiles answered in under 1 s, so the check
+     * waited ~25 s for nothing.
+     */
+    const val HEDGE_MS = 3_000L
     /** Once the tiles answered, a still-running Overpass CORE query gets this much longer before it is stopped. */
-    const val OVERPASS_GRACE_MS = 5_000L
+    const val OVERPASS_GRACE_MS = 4_000L
     const val TILE_MAX_BYTES = 4_000_000
 }
 

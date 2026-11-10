@@ -368,6 +368,10 @@ fun mergeLayers(results: Map<String, OverpassResult>): LayeredOsm {
 /** Should a failed Overpass answer be tried again (on another server)? 429 / 5xx / timeouts yes, 400 (bad query) no. */
 fun overpassRetryable(code: Int?): Boolean = code == null || code == 429 || code == 408 || code >= 500 || code == 0
 
+/** HTTP code in a status line's detail ("POST … · HTTP 400 · …"); null when there is none (network error, test line). */
+fun httpCodeOf(line: SourceStatusLine): Int? =
+    Regex("HTTP (-?\\d+)").find(line.detail)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
+
 /** Back-off before attempt [attempt] (1-based) after a busy answer: 1 s, 3 s, 6 s … (capped at 8 s). */
 fun overpassBackoffMs(attempt: Int, busy: Boolean): Long = if (!busy) 0L else minOf(8_000L, 1_000L * (attempt * (attempt + 1) / 2))
 
@@ -447,8 +451,12 @@ fun overpassReason(code: Int, error: String?): String = when {
 
 /** Servers that refused us (406: one hour) or asked us to slow down (429: one minute), per app session. */
 private val serverPause = mutableMapOf<String, Long>()
-/** One request at a time per server from this app (the free servers count slots per IP). */
-private val serverGates = OVERPASS_ENDPOINTS.associateWith { kotlinx.coroutines.sync.Semaphore(1) }
+/**
+ * Requests per server from this app at the same time. 2.7.1: two (was one) – overpass-api.de gives each IP two slots, and
+ * with one the CORE and EXTRA groups queued behind each other on the same server whenever a hedge sent both there.
+ */
+const val OVERPASS_SLOTS_PER_SERVER = 2
+private val serverGates = OVERPASS_ENDPOINTS.associateWith { kotlinx.coroutines.sync.Semaphore(OVERPASS_SLOTS_PER_SERVER) }
 
 private fun nowMs(): Long = com.hark.sothudiary.data.nowMillis()
 
@@ -525,6 +533,8 @@ suspend fun fetchGroup(
                     r.first.error?.let { lastError = it }
                 }
                 if (winner.isCompleted) break
+                // 2.7.1: a rejected query (HTTP 400) fails the same way on every server – stop instead of retrying.
+                if (r != null && !overpassRetryable(httpCodeOf(r.second))) break
                 if (next < order.size) launchOn(order[next++])
                 else if (finished >= next) {
                     // 2.6.0: every server failed (CI probe 2026-11-08: the free mirrors answered 504 "busy" within a

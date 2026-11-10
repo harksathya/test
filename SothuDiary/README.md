@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.7.0
+# Sothu Diary (சொத்து டைரி) – v2.7.1
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -8,6 +8,18 @@ rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-t
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
+
+## What's new in v2.7.1
+
+- **Faster land check map data.** The 2.7.0 CI probe had every Overpass server fail (overpass-api.de 406, maps.mail.ru
+  504, private.coffee timeout) while the OpenFreeMap tiles answered in under 1 s – yet the check waited 20 s before
+  asking the tiles. Now the tiles are asked after 3 s, and a still-running Overpass query gets 4 s more (was 20 s + 5 s).
+- **A rejected Overpass query (HTTP 400) is no longer retried** on every server (`overpassRetryable` is now used).
+- **Two requests per Overpass server** (was one), so the water/roads/land-use and the amenities/rail groups no longer
+  queue behind each other on the same server (overpass-api.de allows two slots per IP).
+- **TNREGINET page help:** when tnreginet.gov.in has not loaded in 25 s (or fails), a banner offers *Reload* and *Open in
+  browser* (Tamil and English).
+- **Map credit** on the land check screen: © OpenStreetMap contributors (ODbL), tiles OpenFreeMap / OpenMapTiles.
 
 ## What's new in v2.7.0
 

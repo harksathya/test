@@ -408,6 +408,12 @@ fun GuidelinePortalOverlay(
             var formLine by remember { mutableStateOf<com.hark.sothudiary.data.SourceStatus?>(null) }
             var stepDone by remember { mutableStateOf(false) }
             var lastChoices by remember { mutableStateOf(Triple("", "", "")) }
+            // 2.7.1: the government page can hang (CI probe: no answer in 12 s). After 25 s without a load, or on a page
+            // error, offer Reload and Open in browser.
+            var reloadKey by remember { mutableIntStateOf(0) }
+            var slow by remember { mutableStateOf(false) }
+            LaunchedEffect(reloadKey) { slow = false; delay(25_000); if (loads == 0) slow = true }
+            val uri = androidx.compose.ui.platform.LocalUriHandler.current
             LaunchedEffect(pageLine, formLine) { if (propertyId.isNotBlank()) GvSession.set(propertyId, listOfNotNull(pageLine, formLine)) }
 
             fun runPrefill() { script = prefill; prefillRuns = 0; tick++ }
@@ -485,8 +491,24 @@ fun GuidelinePortalOverlay(
                         }
                     }
                 }
+                if (slow || pageLine.ok == false) {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(com.hark.sothudiary.i18n.S71.portalSlow.s(), style = MaterialTheme.typography.bodySmall)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = {
+                                    pageLine = com.hark.sothudiary.data.SourceStatus("TNREGINET page", null, "loading…")
+                                    progress = 0; reloadKey++
+                                }) { Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(com.hark.sothudiary.i18n.S71.reload.s()) }
+                                TextButton(onClick = { runCatching { uri.openUri(DutyRules.TNREGINET_GUIDELINE_URL) } }) {
+                                    Icon(Icons.Filled.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(com.hark.sothudiary.i18n.S71.openInBrowser.s())
+                                }
+                            }
+                        }
+                    }
+                }
                 HorizontalDivider()
-                PortalWebView(
+                androidx.compose.runtime.key(reloadKey) { PortalWebView(
                     url = DutyRules.TNREGINET_GUIDELINE_URL,
                     modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(),
                     script = script,
@@ -540,10 +562,10 @@ fun GuidelinePortalOverlay(
                             if (o != null && b("found") && b("waiting") && prefillRuns < 8) { prefillRuns++; retry++ }
                         }
                     },
-                    onPageLoaded = { u -> pageUrl = u; loads++; if (pageLine.ok != false) pageLine = com.hark.sothudiary.data.SourceStatus(S4.gvStepPage.of(lang), true, "loaded", detail = u) },
+                    onPageLoaded = { u -> pageUrl = u; loads++; slow = false; if (pageLine.ok != false) pageLine = com.hark.sothudiary.data.SourceStatus(S4.gvStepPage.of(lang), true, "loaded", detail = u) },
                     onPageError = { e -> pageLine = com.hark.sothudiary.data.SourceStatus(S4.gvStepPage.of(lang), false, e, detail = pageUrl) },
                     onProgress = { progress = it },
-                )
+                ) }
             }
         }
     }
