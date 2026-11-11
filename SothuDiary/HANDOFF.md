@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-10 20:52 IST, by Hark (project agent). main before this doc-only commit = v3.0.1 `ad83423` (CI 42841804054 success, APK asset published from ad83423). v3.0.0 `e7908ff` CI 42840196706 success. Stopped here: Hark monthly usage pool reached 95%.
+Last updated: 2026-11-11 09:05 IST, by Hark (daily morning run). main before this doc-only commit = `1a25182` (code still v3.0.1 `ad83423`, CI 42841804054 success, APK asset published from ad83423). v3.0.0 `e7908ff` CI 42840196706 success. No open GitHub issues. No code work this run: Hark monthly usage pool at 96% (resets 2026-12-07 14:18 IST), so Yet-to-start items wait.
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
