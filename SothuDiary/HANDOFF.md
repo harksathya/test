@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-11 18:10 IST, by Hark (project agent): v3.1.0 first-launch Google sign-in screen (desktop tests pass locally incl. V310Test; CI result below once known).
+Last updated: 2026-11-11 18:10 IST, by Hark (project agent): v3.1.0 first-launch Google sign-in screen (CI 43021806565 success, APK published).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
