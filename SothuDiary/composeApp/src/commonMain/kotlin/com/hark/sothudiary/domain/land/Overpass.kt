@@ -593,42 +593,31 @@ suspend fun fetchOsmLayers(
     queries: Map<String, String>, budgetMs: Long = LandRules.OSM_BUDGET_MS,
     coreFallback: (suspend () -> Pair<Map<String, OverpassResult>, List<SourceStatusLine>>)? = null,
     hedgeMs: Long = VectorTileRules.HEDGE_MS, graceMs: Long = VectorTileRules.OVERPASS_GRACE_MS,
+    /** 3.0.2: second source for the EXTRA layers (the land check passes [fetchTileExtra]); same hedge, longer grace. */
+    extraFallback: (suspend () -> Pair<Map<String, OverpassResult>, List<SourceStatusLine>>)? = null,
+    extraGraceMs: Long = ExtraTileRules.OVERPASS_GRACE_MS,
+    /** Tests replace the Overpass group fetch. */
+    groupFetch: suspend (query: String, index: Int, label: String, budgetMs: Long) -> Pair<OverpassResult, List<SourceStatusLine>> =
+        { q, i, l, b -> fetchGroup(q, i, l, b) },
 ): LayeredOsm {
     val groups = groupQueries(queries)
-    val coreLabel = "(water, roads, land use)"
-    var fallback: Pair<Map<String, OverpassResult>, List<SourceStatusLine>>? = null
-    var coreStopped = false
-    val answers = kotlinx.coroutines.coroutineScope {
-        val deferred = groups.entries.mapIndexed { i, (g, q) ->
-            g to async { fetchGroup(q, i, if (g == OsmGroup.CORE) coreLabel else "(amenities, rail, forest)", budgetMs) }
-        }.toMap()
-        val core = deferred[OsmGroup.CORE]
-        var coreAns: Pair<OverpassResult, List<SourceStatusLine>>? = null
-        if (coreFallback != null && core != null) {
-            val early = kotlinx.coroutines.withTimeoutOrNull(hedgeMs) { core.await() }
-            coreAns = early
-            if (early == null || early.first.error != null) {
-                fallback = try {
-                    coreFallback()
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    OsmGroup.layers.getValue(OsmGroup.CORE).associateWith { OverpassResult(emptyList(), "[other] ${VectorTileRules.SOURCE}: ${e.message}") } to
-                        listOf(SourceStatusLine(VectorTileRules.SOURCE, false, e.message ?: "error"))
-                }
-                val tilesOk = fallback?.first?.values?.any { it.error == null } == true
-                if (early == null) {
-                    coreAns = if (tilesOk) {
-                        kotlinx.coroutines.withTimeoutOrNull(graceMs) { core.await() } ?: run { core.cancel(); coreStopped = true; null }
-                    } else core.await()
+    val labels = mapOf(OsmGroup.CORE to "(water, roads, land use)", OsmGroup.EXTRA to "(amenities, rail, forest)")
+    val hedged = kotlinx.coroutines.coroutineScope {
+        val deferred = groups.entries.mapIndexed { i, (g, q) -> g to async { groupFetch(q, i, labels[g] ?: g, budgetMs) } }.toMap()
+        deferred.map { (g, d) ->
+            g to async {
+                when (g) {
+                    OsmGroup.CORE -> hedgeGroup(d, g, coreFallback, hedgeMs, graceMs)
+                    OsmGroup.EXTRA -> hedgeGroup(d, g, extraFallback, hedgeMs, extraGraceMs)
+                    else -> HedgedGroup(d.await(), null, false)
                 }
             }
-        }
-        deferred.mapValues { (g, d) -> if (g == OsmGroup.CORE && coreFallback != null) coreAns else d.await() }
+        }.associate { (g, a) -> g to a.await() }
     }
     val perLayer = LinkedHashMap<String, OverpassResult>()
     for (g in groups.keys) {
-        val ans = answers[g]
+        val h = hedged[g]
+        val ans = h?.answer
         val layers = OsmGroup.layers[g].orEmpty()
         layers.forEachIndexed { i, layer ->
             val r = when {
@@ -638,14 +627,52 @@ suspend fun fetchOsmLayers(
                 i == 0 -> ans.first
                 else -> OverpassResult(emptyList())
             }
-            val alt = fallback?.first?.get(layer)
+            val alt = h?.fallback?.first?.get(layer)
             perLayer[layer] = if (r.error != null && alt != null && alt.error == null) alt else r
         }
     }
-    val lines = answers.values.filterNotNull().flatMap { it.second } +
-        (if (coreStopped) listOf(SourceStatusLine("Overpass $coreLabel", false, "stopped – the map tiles answered first")) else emptyList()) +
-        fallback?.second.orEmpty()
+    val lines = groups.keys.flatMap { g ->
+        val h = hedged[g] ?: return@flatMap emptyList<SourceStatusLine>()
+        h.answer?.second.orEmpty() +
+            (if (h.stopped) listOf(SourceStatusLine("Overpass ${labels[g] ?: g}", false,
+                "stopped – the map tiles answered first" + (if (g == OsmGroup.EXTRA) " (power lines need Overpass)" else ""))) else emptyList()) +
+            h.fallback?.second.orEmpty()
+    }
     return mergeLayers(perLayer).copy(attempts = lines)
+}
+
+/** One group's Overpass answer (null when stopped), its map-tile fallback (when asked) and whether Overpass was stopped. */
+private class HedgedGroup(
+    val answer: Pair<OverpassResult, List<SourceStatusLine>>?,
+    val fallback: Pair<Map<String, OverpassResult>, List<SourceStatusLine>>?,
+    val stopped: Boolean,
+)
+
+/**
+ * Overpass for one group with a second source: when Overpass has not answered within [hedgeMs] (or failed sooner) the
+ * [fallback] is fetched; once it has data, Overpass gets [graceMs] more and is then stopped. Without a fallback: Overpass alone.
+ */
+private suspend fun hedgeGroup(
+    d: kotlinx.coroutines.Deferred<Pair<OverpassResult, List<SourceStatusLine>>>, group: String,
+    fallback: (suspend () -> Pair<Map<String, OverpassResult>, List<SourceStatusLine>>)?, hedgeMs: Long, graceMs: Long,
+): HedgedGroup {
+    if (fallback == null) return HedgedGroup(d.await(), null, false)
+    val early = kotlinx.coroutines.withTimeoutOrNull(hedgeMs) { d.await() }
+    if (early != null && early.first.error == null) return HedgedGroup(early, null, false)
+    val fb = try {
+        fallback()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        OsmGroup.layers.getValue(group).associateWith { OverpassResult(emptyList(), "[other] ${VectorTileRules.SOURCE}: ${e.message}") } to
+            listOf(SourceStatusLine(VectorTileRules.SOURCE, false, e.message ?: "error"))
+    }
+    if (early != null) return HedgedGroup(early, fb, false)
+    val tilesOk = fb.first.values.any { it.error == null }
+    if (!tilesOk) return HedgedGroup(d.await(), fb, false)
+    val late = kotlinx.coroutines.withTimeoutOrNull(graceMs) { d.await() }
+    if (late == null) { d.cancel(); return HedgedGroup(null, fb, true) }
+    return HedgedGroup(late, fb, false)
 }
 
 /** Open-Meteo elevation (Copernicus 90 m DEM, free, no key) for up to 100 points; null on any error. */

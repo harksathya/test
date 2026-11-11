@@ -64,10 +64,19 @@ class LiveEndpointsProbe {
             tileLines.joinToString("; ") { "${it.reason} ${it.ms} ms" })
         tiles.values.flatMap { it.elements }.mapNotNull { e -> e.tags["name"]?.let { n -> (e.tags["highway"] ?: e.tags["water"] ?: e.tags["waterway"] ?: e.tags["landuse"] ?: "") + ":" + n } }
             .distinct().take(8).forEach { out("   $it") }
+        // 3.0.2: the EXTRA layers (amenities, rail, protected areas / forest) from the same tiles.
+        val te = System.currentTimeMillis()
+        val (extra, extraLines) = com.hark.sothudiary.domain.land.fetchTileExtra(lat, lng)
+        out("openfreemap extra tiles (${(System.currentTimeMillis() - te) / 1000} s): " +
+            extra.entries.joinToString(" ") { (l, r) -> "$l=" + (r.error ?: "${r.elements.size}") } + " | " +
+            extraLines.joinToString("; ") { "${it.reason} ${it.ms} ms" })
+        extra.values.flatMap { it.elements }.mapNotNull { e -> e.tags["name"]?.let { n -> (e.tags["amenity"] ?: e.tags["railway"] ?: e.tags["boundary"] ?: e.tags["highway"] ?: e.tags["shop"] ?: "") + ":" + n } }
+            .distinct().take(8).forEach { out("   $it") }
         // The land check's own call: both groups raced across all servers, with the app's budget and retries,
         // and (2.7.0) the map tiles as the second source for the core layers – exactly as on the phone.
         val t0 = System.currentTimeMillis()
-        val all = com.hark.sothudiary.domain.land.fetchOsmLayers(layers, coreFallback = { com.hark.sothudiary.domain.land.fetchTileCore(lat, lng, 1000) })
+        val all = com.hark.sothudiary.domain.land.fetchOsmLayers(layers, coreFallback = { com.hark.sothudiary.domain.land.fetchTileCore(lat, lng, 1000) },
+            extraFallback = { com.hark.sothudiary.domain.land.fetchTileExtra(lat, lng) })
         out("land check map data (app path, ${(System.currentTimeMillis() - t0) / 1000} s): ok=${all.okLayers} failed=${all.failed.keys} elements=${all.elements.size} | " +
             all.attempts.joinToString("; ") { "${it.source.substringAfter("· ")}: ${it.reason} ${it.ms} ms" })
         // overpass-api.de blocks some cloud networks outright (status page 406 too): then its tries are skipped here.

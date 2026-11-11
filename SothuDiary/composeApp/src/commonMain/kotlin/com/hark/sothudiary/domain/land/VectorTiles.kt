@@ -446,3 +446,160 @@ suspend fun fetchTileCore(lat: Double, lng: Double, waterRadiusM: Int): Pair<Map
         "z${VectorTileRules.DETAIL_ZOOM} " + detail.joinToString(" ") { "${it.first}/${it.second}" } +
             " · z${VectorTileRules.WIDE_ZOOM} " + wide.joinToString(" ") { "${it.first}/${it.second}" } + " · OpenStreetMap data"))
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 3.0.2: the EXTRA group (amenities, railway, protected areas / forest) from the same tiles.
+
+/**
+ * 3.0.2: a second source for the EXTRA layers. The 2.7.2 CI probe had every Overpass server fail for EXTRA (504 / 406 /
+ * timeout), so schools, hospitals, bus stops, markets, railway and sanctuaries all showed *Unknown* and the map step used
+ * the whole 75 s budget. The OpenMapTiles `poi`, `transportation` (class rail), `park` and `landcover` (forest) layers hold
+ * the same OpenStreetMap data. NOT in the tiles: power lines / substations, water tanks (UTILITIES) and railway level
+ * crossings – those still come from Overpass only, so UTILITIES stays *Unknown* when Overpass fails.
+ */
+object ExtraTileRules {
+    /** Amenities / railway / forest from z14 tiles within this radius (the Overpass EXTRA query uses 3 km). */
+    const val DETAIL_RADIUS_M = 3_000.0
+    /** Protected areas from z11 tiles (one is ~19 km wide) within [PROTECTED_RADIUS_M]. */
+    const val PARK_ZOOM = 11
+    /** Once the tiles answered, a still-running Overpass EXTRA query gets this much longer (it alone has power lines). */
+    const val OVERPASS_GRACE_MS = 15_000L
+    /** Element ids for tile features of the EXTRA group start here, so they never clash with the CORE tile ids in [mergeLayers]. */
+    const val ID_BASE = -1_000_000_000L
+}
+
+private val SCHOOL_SUB = setOf("school", "college", "university", "kindergarten")
+private val HEALTH_SUB = setOf("hospital", "clinic", "doctors")
+private val SHOP_SUB = setOf("supermarket", "convenience", "general", "grocery", "greengrocer")
+private val RAIL_SUB = setOf("rail", "light_rail", "narrow_gauge")
+
+/** OSM-style tags for one OpenMapTiles feature of the EXTRA layers, or null when the land check does not use it. Pure. */
+fun omtExtraTags(layer: String, p: Map<String, String>, geomType: Int): Map<String, String>? {
+    val cls = p["class"] ?: return null
+    val sub = p["subclass"]?.takeIf { it.isNotBlank() } ?: cls
+    val name = (p["name:en"] ?: p["name_en"] ?: p["name"])?.takeIf { it.isNotBlank() }
+    val t = LinkedHashMap<String, String>()
+    when (layer) {
+        "poi" -> when {
+            sub in SCHOOL_SUB -> t["amenity"] = sub
+            sub in HEALTH_SUB -> t["amenity"] = sub
+            sub == "marketplace" || sub == "bus_station" -> t["amenity"] = sub
+            sub == "bus_stop" -> t["highway"] = "bus_stop"
+            sub in SHOP_SUB -> t["shop"] = sub
+            cls == "railway" && (sub == "station" || sub == "halt") -> t["railway"] = sub
+            else -> return null
+        }
+        "transportation" -> {
+            if (cls != "rail" || sub !in RAIL_SUB) return null
+            t["railway"] = sub
+        }
+        "park" -> {
+            if (geomType != 3) return null // the park points are only labels
+            when (cls) {
+                "national_park" -> t["boundary"] = "national_park"
+                "nature_reserve" -> t["leisure"] = "nature_reserve"
+                "park" -> return null
+                else -> {
+                    t["boundary"] = "protected_area"
+                    // OpenMapTiles puts protection_title ("Wildlife Refuge", "Reserved Forest") into the class.
+                    val title = cls.replace('_', ' ')
+                    t["protection_title"] = if ("refuge" in title || "wildlife" in title) "wildlife sanctuary" else title
+                }
+            }
+        }
+        "landcover" -> {
+            if (cls != "wood" || p["subclass"] != "forest" || geomType != 3) return null
+            t["landuse"] = "forest"
+        }
+        else -> return null
+    }
+    if (name != null) t["name"] = name
+    return t
+}
+
+/** The EXTRA layers ([OsmLayer.AMENITIES], [OsmLayer.RAIL], [OsmLayer.PROTECTED]) from decoded tiles. Pure: unit-tested. */
+fun tilesToExtraLayers(tiles: List<Triple<Int, Pair<Int, Int>, List<MvtLayer>>>): Map<String, List<OsmElement>> {
+    data class Acc(val layer: String, val tags: Map<String, String>, val paths: MutableList<List<Pair<Double, Double>>>, var point: Pair<Double, Double>?)
+    val acc = LinkedHashMap<String, Acc>()
+    var n = 0L
+    for ((z, xy, layers) in tiles) {
+        val detail = z >= VectorTileRules.DETAIL_ZOOM
+        for (layer in layers) {
+            // Parks come from the wide tiles only, everything else from the detailed ones (no double counting).
+            if ((layer.name == "park") == detail) continue
+            val ext = layer.extent.toDouble()
+            fun toLatLng(p: Pair<Int, Int>) = tileToLatLng(xy.first + p.first / ext, xy.second + p.second / ext, z)
+            for (f in layer.features) {
+                val tags = omtExtraTags(layer.name, f.tags, f.type) ?: continue
+                val paths = f.parts.filter { it.isNotEmpty() }.map { part -> part.map(::toLatLng) }
+                if (paths.isEmpty()) continue
+                val bucket = when {
+                    tags["railway"] != null -> OsmLayer.RAIL
+                    layer.name == "park" || layer.name == "landcover" -> OsmLayer.PROTECTED
+                    else -> OsmLayer.AMENITIES
+                }
+                // A point (POI) is one element per tile; lines / areas cut by tile edges are joined (same id and tags).
+                val key = bucket + "|" + layer.name + "|" + (if (f.type == 1 || f.id == 0L) "n" + (n++) else f.id.toString()) + "|" + tags
+                val a = acc.getOrPut(key) { Acc(bucket, tags, mutableListOf(), null) }
+                if (f.type == 1) a.point = paths.first().first() else a.paths += paths
+            }
+        }
+    }
+    val out = linkedMapOf<String, MutableList<OsmElement>>(OsmLayer.AMENITIES to mutableListOf(), OsmLayer.RAIL to mutableListOf(), OsmLayer.PROTECTED to mutableListOf())
+    var id = ExtraTileRules.ID_BASE
+    for (a in acc.values) {
+        val type = if (a.point != null && a.paths.isEmpty()) "node" else "way"
+        out.getValue(a.layer) += OsmElement(type, id--, a.tags, a.point?.first, a.point?.second, a.paths.toList(), a.paths.map { "" })
+    }
+    return out
+}
+
+private val WANTED_EXTRA = setOf("poi", "transportation", "landcover", "park")
+
+/**
+ * The EXTRA layers (amenities, railway, protected areas / forest) from OpenFreeMap vector tiles, with one status line.
+ * [OsmLayer.UTILITIES] is never returned (power lines are not in the tiles), so it keeps Overpass's answer or error.
+ */
+suspend fun fetchTileExtra(lat: Double, lng: Double): Pair<Map<String, OverpassResult>, List<SourceStatusLine>> {
+    val t0 = com.hark.sothudiary.data.nowMillis()
+    val (template, why) = tileTemplate()
+    val label = "${VectorTileRules.SOURCE} (amenities, rail, forest) · openfreemap.org"
+    val extraLayers = listOf(OsmLayer.AMENITIES, OsmLayer.RAIL, OsmLayer.PROTECTED)
+    if (template == null) {
+        val err = "[other] ${VectorTileRules.SOURCE}: $why"
+        return extraLayers.associateWith { OverpassResult(emptyList(), err) } to
+            listOf(SourceStatusLine(label, false, "tile list: $why", com.hark.sothudiary.data.nowMillis() - t0, VectorTileRules.TILEJSON_URL))
+    }
+    val detail = tilesAround(lat, lng, ExtraTileRules.DETAIL_RADIUS_M, VectorTileRules.DETAIL_ZOOM)
+    val wide = tilesAround(lat, lng, PROTECTED_RADIUS_M.toDouble(), ExtraTileRules.PARK_ZOOM)
+    fun url(z: Int, xy: Pair<Int, Int>) = template.replace("{z}", z.toString()).replace("{x}", xy.first.toString()).replace("{y}", xy.second.toString())
+    val jobs = detail.map { VectorTileRules.DETAIL_ZOOM to it } + wide.map { ExtraTileRules.PARK_ZOOM to it }
+    val got = coroutineScope {
+        jobs.map { (z, xy) ->
+            async {
+                val b = tileBytes(url(z, xy))
+                Triple(z, xy, b?.let { runCatching { decodeMvt(it, WANTED_EXTRA) }.getOrNull() })
+            }
+        }.awaitAll()
+    }
+    val ms = com.hark.sothudiary.data.nowMillis() - t0
+    val detailOk = got.filter { it.first == VectorTileRules.DETAIL_ZOOM }.all { it.third != null }
+    val wideOk = got.filter { it.first == ExtraTileRules.PARK_ZOOM }.all { it.third != null }
+    val loaded = got.mapNotNull { (z, xy, l) -> l?.let { Triple(z, xy, it) } }
+    val failedErr = "[other] ${VectorTileRules.SOURCE}: some tiles did not load"
+    val layers = tilesToExtraLayers(loaded)
+    val res = linkedMapOf(
+        OsmLayer.AMENITIES to if (detailOk) OverpassResult(layers[OsmLayer.AMENITIES].orEmpty()) else OverpassResult(emptyList(), failedErr),
+        OsmLayer.RAIL to if (detailOk) OverpassResult(layers[OsmLayer.RAIL].orEmpty()) else OverpassResult(emptyList(), failedErr),
+        // Forest comes from the detailed tiles, sanctuaries from the wide ones: both are needed.
+        OsmLayer.PROTECTED to if (detailOk && wideOk) OverpassResult(layers[OsmLayer.PROTECTED].orEmpty()) else OverpassResult(emptyList(), failedErr),
+    )
+    val ok = res.values.any { it.error == null }
+    val n = res.values.sumOf { it.elements.size }
+    val missing = got.count { it.third == null }
+    return res to listOf(SourceStatusLine(label, ok,
+        (if (ok) "$n map features from ${loaded.size} tiles (no power lines / level crossings in tiles)" else "$missing of ${got.size} tiles did not load") +
+            (if (ok && missing > 0) " · $missing tiles did not load" else ""), ms,
+        "z${VectorTileRules.DETAIL_ZOOM} " + detail.joinToString(" ") { "${it.first}/${it.second}" } +
+            " · z${ExtraTileRules.PARK_ZOOM} " + wide.joinToString(" ") { "${it.first}/${it.second}" } + " · OpenStreetMap data"))
+}

@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-11 09:05 IST, by Hark (daily morning run). main before this doc-only commit = `1a25182` (code still v3.0.1 `ad83423`, CI 42841804054 success, APK asset published from ad83423). v3.0.0 `e7908ff` CI 42840196706 success. No open GitHub issues. No code work this run: Hark monthly usage pool at 96% (resets 2026-12-07 14:18 IST), so Yet-to-start items wait.
+Last updated: 2026-11-11 11:15 IST, by Hark (daily morning run). This commit = v3.0.2 (EXTRA map layers from OpenFreeMap tiles); previous main `a268580` (code v3.0.1 `ad83423`, CI 42841804054 success). No open GitHub issues. Hark usage at start of run: daily 0%, pool 32%. CI result for 3.0.2: see the next commit / Actions tab (pending at time of writing).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -110,12 +110,25 @@ Last updated: 2026-11-11 09:05 IST, by Hark (daily morning run). main before thi
 - UNVERIFIED (phone only): GIS consent flow, real uploads/downloads, X-HTTP-Method-Override on the upload endpoint,
   large PDFs (whole file in memory; no resumable upload yet – fine for files of a few MB).
 
+## v3.0.2 EXTRA map layers from tiles – this commit; all 19 desktop test classes pass locally (incl. V302Test); CI pending
+- `domain/land/VectorTiles.kt`: `ExtraTileRules` (z14 within 3 km, parks from z11 within 10 km, Overpass EXTRA grace 15 s,
+  ids from -1e9 so they never clash with CORE tile ids in `mergeLayers`), `omtExtraTags` (poi subclass → amenity / shop /
+  highway=bus_stop / railway=station|halt; transportation class rail → railway; park polygons → boundary / leisure,
+  class like `wildlife_refuge` → protection_title "wildlife sanctuary"; landcover wood/forest → landuse=forest),
+  `tilesToExtraLayers`, `fetchTileExtra`. Checked against real OpenFreeMap tiles 2026-11-11 (Madurai z14 poi classes,
+  Mudumalai / Srivilliputhur park polygons carry name + class).
+- `domain/land/Overpass.kt`: `fetchOsmLayers(extraFallback=…, extraGraceMs=…, groupFetch=…)` – CORE and EXTRA both use
+  `hedgeGroup` (tiles after 3 s; Overpass preferred when it answers; stopped after the grace). `LandCheck.kt` passes
+  `fetchTileExtra`; `LiveEndpointsProbe.kt` prints an "openfreemap extra tiles" line.
+- Not in tiles: power lines / substations / water tanks (UTILITIES) and level crossings → still Overpass only; UTILITIES
+  shows Unknown when Overpass is stopped. NEXT: read the 3.0.2 CI probe lines (map step time, ok/failed layers).
+
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,
   private.coffee no answer. The EXTRA group (amenities, utilities/power lines, rail, proposed roads, 10 km protected
   areas) comes ONLY from Overpass and shows *Unknown* when it fails; it now dominates the land check time (2.7.2
-  probe: 75 s, EXTRA empty; 2.7.0 probe: 34 s, EXTRA from maps.mail.ru). Best fix: map OpenMapTiles `poi`, `transportation` (rail) and `park` layers in `VectorTiles.kt` as an EXTRA fallback
-  (power lines are not in OpenMapTiles).
+  probe: 75 s, EXTRA empty; 2.7.0 probe: 34 s, EXTRA from maps.mail.ru). 3.0.2 adds the tile fallback for amenities,
+  rail and protected areas (see its section); power lines / level crossings still need Overpass.
 - TNREGINET (guideline value) unreachable from sandbox and CI (CI: HTTP -1 after 12 s). Form ids (districtList,
   SROList, villageList, streetName, surveyName) match a 2026 archived copy; live auto-fill untested.
 - DuckDuckGo / DuckDuckGo Lite block the app (robot check, HTTP 202); Bing fallback works.
@@ -136,9 +149,5 @@ Last updated: 2026-11-11 09:05 IST, by Hark (daily morning run). main before thi
   (d) no "open the file" button yet on the Documents list (not done). (b) was fixed in v2.9.0 (property delete removes document files).
 
 ## Yet to start
-- EXTRA map layers from OpenFreeMap tiles (see Not working) – NOT started (agent stopped at 95% usage). Plan: in
-  `domain/land/VectorTiles.kt` decode OpenMapTiles `poi` (class school/hospital/bus/marketplace…), `transportation`
-  (class rail) and `park` (protected areas) into LandFeature categories, call it from `fetchOsmLayers` when the EXTRA
-  Overpass group fails (like `coreFallback`), add a V302Test with a fixture tile; power lines stay Overpass-only.
-- Other ideas offered, not chosen yet: offline Tamil OCR (Tesseract4Android), reminders for follow-ups, price
+- Nothing agreed with the owner is left. Other ideas offered, not chosen yet: offline Tamil OCR (Tesseract4Android), reminders for follow-ups, price
   comparison chart.

@@ -1,4 +1,4 @@
-# Sothu Diary (சொத்து டைரி) – v2.9.1
+# Sothu Diary (சொத்து டைரி) – v3.0.2
 
 A personal property-deal tracker for a buyer in Madurai, Tamil Nadu. Keep every lead you see on
 YouTube / Instagram / Facebook / WhatsApp, the brokers behind them, every call and promise, voice notes,
@@ -8,6 +8,14 @@ rates and a **Go / Hold / Drop** suggestion. Tamil and English throughout (one-t
 Debug APK (latest build): https://github.com/harksathya/test/releases/download/sothu-diary-latest/SothuDiary.apk
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
+
+## What's new in v3.0.2
+
+- **Land check – nearby places even when the map servers are busy:** schools, hospitals / clinics, bus stops, markets,
+  railway stations and lines, wildlife sanctuaries / national parks (10 km) and forests now also come from the free
+  OpenFreeMap map tiles (OpenStreetMap data) when the Overpass servers do not answer within 3 s. Overpass still wins
+  when it answers; it gets 15 s more after the tiles, then it is stopped, so the check no longer waits 75 s. Power lines,
+  water tanks and railway level crossings are not in the tiles – they still need Overpass and show *Unknown* without it.
 
 ## What's new in v3.0.1
 
