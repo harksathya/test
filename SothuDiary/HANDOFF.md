@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-11 11:15 IST, by Hark (daily morning run). This commit = v3.0.2 (EXTRA map layers from OpenFreeMap tiles); previous main `a268580` (code v3.0.1 `ad83423`, CI 42841804054 success). No open GitHub issues. Hark usage at start of run: daily 0%, pool 32%. v3.0.2 = `a4ec96d`, CI 42963695478 success, APK published. This is a doc-only commit.
+Last updated: 2026-11-11 18:00 IST, by Hark (project agent): added the first-launch Google sign-in requirement under Yet to start. Code is still v3.0.2 `a4ec96d` (CI 42963695478 success). Doc-only commit.
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -152,5 +152,15 @@ Last updated: 2026-11-11 11:15 IST, by Hark (daily morning run). This commit = v
   (d) no "open the file" button yet on the Documents list (not done). (b) was fixed in v2.9.0 (property delete removes document files).
 
 ## Yet to start
+- **TOP PRIORITY (owner, 2026-11-11 17:55 IST, after installing v3.0.2): Google sign-in as the FIRST setup step.**
+  Today a fresh install goes straight to the AI provider / Gemini key screen and never asks for Google login; Drive
+  connect is only in Settings. Owner wants: on first launch, before the AI key step, a "Sign in with Google /
+  Google கணக்கில் உள்நுழை" screen (reuse the 3.0.0 AuthorizationClient + `drive.appdata` flow in
+  `domain/drive/DriveSync.kt` / `ui/screens/DriveCard.kt`). After sign-in: if Drive has `sothu_diary.json`, restore
+  everything (properties, files, and the saved AI provider/key/model if they are in the backup – check whether
+  settings are in `exportJson`; if not, back them up too) and skip steps already restored; then turn auto-backup on.
+  Offer "Skip / பிறகு" so the app still works offline. Same Gmail on another phone must bring everything back
+  without typing the key again. Only harksathya@gmail.com is a test user in the OAuth consent screen.
+  Not started: Hark usage pool was 99% at 17:55 IST on 11 Nov (resets 7 Dec 2026 14:18 IST).
 - Nothing agreed with the owner is left. Other ideas offered, not chosen yet: offline Tamil OCR (Tesseract4Android), reminders for follow-ups, price
   comparison chart.
