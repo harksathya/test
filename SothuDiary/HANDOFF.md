@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-11 11:15 IST, by Hark (daily morning run). This commit = v3.0.2 (EXTRA map layers from OpenFreeMap tiles); previous main `a268580` (code v3.0.1 `ad83423`, CI 42841804054 success). No open GitHub issues. Hark usage at start of run: daily 0%, pool 32%. CI result for 3.0.2: see the next commit / Actions tab (pending at time of writing).
+Last updated: 2026-11-11 11:15 IST, by Hark (daily morning run). This commit = v3.0.2 (EXTRA map layers from OpenFreeMap tiles); previous main `a268580` (code v3.0.1 `ad83423`, CI 42841804054 success). No open GitHub issues. Hark usage at start of run: daily 0%, pool 32%. v3.0.2 = `a4ec96d`, CI 42963695478 success, APK published. This is a doc-only commit.
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -110,7 +110,7 @@ Last updated: 2026-11-11 11:15 IST, by Hark (daily morning run). This commit = v
 - UNVERIFIED (phone only): GIS consent flow, real uploads/downloads, X-HTTP-Method-Override on the upload endpoint,
   large PDFs (whole file in memory; no resumable upload yet – fine for files of a few MB).
 
-## v3.0.2 EXTRA map layers from tiles – this commit; all 19 desktop test classes pass locally (incl. V302Test); CI pending
+## v3.0.2 EXTRA map layers from tiles – `a4ec96d`, CI 42963695478 success (19 desktop test classes incl. V302Test)
 - `domain/land/VectorTiles.kt`: `ExtraTileRules` (z14 within 3 km, parks from z11 within 10 km, Overpass EXTRA grace 15 s,
   ids from -1e9 so they never clash with CORE tile ids in `mergeLayers`), `omtExtraTags` (poi subclass → amenity / shop /
   highway=bus_stop / railway=station|halt; transportation class rail → railway; park polygons → boundary / leisure,
@@ -121,7 +121,10 @@ Last updated: 2026-11-11 11:15 IST, by Hark (daily morning run). This commit = v
   `hedgeGroup` (tiles after 3 s; Overpass preferred when it answers; stopped after the grace). `LandCheck.kt` passes
   `fetchTileExtra`; `LiveEndpointsProbe.kt` prints an "openfreemap extra tiles" line.
 - Not in tiles: power lines / substations / water tanks (UTILITIES) and level crossings → still Overpass only; UTILITIES
-  shows Unknown when Overpass is stopped. NEXT: read the 3.0.2 CI probe lines (map step time, ok/failed layers).
+  shows Unknown when Overpass is stopped.
+- CI probe on 3.0.2 (Madurai pin): extra tiles 415 ms (amenities 9, rail 8, protected 0); land check map step 18 s
+  (was 75 s in 2.7.2), ok = 6 of 7 layers, only utilities failed (both Overpass groups stopped after the tiles answered).
+  Needs a phone check on mobile data.
 
 ## Not working / known limits
 - Overpass from GitHub CI runners: overpass-api.de 406 (User-Agent policy / Azure IPs), VK Maps mirror 504 or ~25 s,
