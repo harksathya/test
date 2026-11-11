@@ -508,6 +508,8 @@ data class AppSettings(
     val driveLastBackupAt: Long = 0,
     /** 3.0.0: back up automatically 30 s after a change while connected. */
     val driveAuto: Boolean = true,
+    /** 3.1.0: the first-launch "Sign in with Google" screen was finished or skipped (shown once). */
+    val signInStepDone: Boolean = false,
 )
 
 /** 2.4.0: relative weights of the 0–100 property score (Settings). Missing factors are skipped, not counted as zero. */

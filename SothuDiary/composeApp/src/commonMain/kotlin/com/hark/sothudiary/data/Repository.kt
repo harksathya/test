@@ -408,6 +408,9 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
         d.copy(settings = d.settings.copy(bgmEnabled = enabled, bgmVolume = volume.coerceIn(0f, 1f), bgmFile = file))
     }
 
+    /** 3.1.0: the first-launch Google sign-in screen was finished or skipped. */
+    fun setSignInStepDone() = update { d -> d.copy(settings = d.settings.copy(signInStepDone = true)) }
+
     fun dismissKeyCard() = update { d -> d.copy(settings = d.settings.copy(keyCardDismissed = true)) }
 
     fun deleteOnlineRate(id: String) = update { d -> d.copy(onlineRates = d.onlineRates.filterNot { it.id == id }) }
@@ -433,6 +436,7 @@ class JsonRepository(private val store: FileStore) : PropertyRepository {
         base.copy(settings = base.settings.copy(
             lang = d.settings.lang,
             driveAccount = d.settings.driveAccount, driveLastBackupAt = d.settings.driveLastBackupAt, driveAuto = d.settings.driveAuto,
+            signInStepDone = d.settings.signInStepDone,
         ))
     }
 

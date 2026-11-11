@@ -7,6 +7,7 @@ import com.hark.sothudiary.BytesResult
 import com.hark.sothudiary.DriveAuth
 import com.hark.sothudiary.PlatformActions
 import com.hark.sothudiary.data.AppData
+import com.hark.sothudiary.data.AppSettings
 import com.hark.sothudiary.data.JsonRepository
 import com.hark.sothudiary.data.Lang
 import com.hark.sothudiary.data.nowMillis
@@ -128,8 +129,32 @@ fun mergeAppData(phone: AppData, drive: AppData): AppData {
         onlineRates = union(phone.onlineRates, drive.onlineRates) { it.id },
         rateLookups = union(phone.rateLookups, drive.rateLookups) { it.key },
         landChecks = checks,
+        settings = mergeAiSettings(phone.settings, drive.settings),
     )
 }
+
+/**
+ * 3.1.0: on MERGE the phone keeps its own settings, but an AI provider key / model the phone does not have yet comes
+ * from the Drive backup (so the same Gmail on a new phone does not need the key typed again).
+ */
+fun mergeAiSettings(phone: AppSettings, drive: AppSettings): AppSettings {
+    val keys = drive.llmKeys.filterValues { it.isNotBlank() } + phone.llmKeys.filterValues { it.isNotBlank() }
+    val models = drive.llmModels + phone.llmModels
+    val phoneHasGemini = phone.geminiApiKey.isNotBlank()
+    val phoneHasAny = phoneHasGemini || phone.llmKeys.values.any { it.isNotBlank() }
+    return phone.copy(
+        geminiApiKey = if (phoneHasGemini) phone.geminiApiKey else drive.geminiApiKey,
+        geminiModel = if (phoneHasGemini) phone.geminiModel else drive.geminiModel,
+        llmKeys = keys,
+        llmModels = models,
+        llmProvider = if (phoneHasAny) phone.llmProvider else drive.llmProvider,
+        youtubeApiKey = phone.youtubeApiKey.ifBlank { drive.youtubeApiKey },
+    )
+}
+
+/** 3.1.0: the first-launch Google sign-in screen shows once, on Android, until it is finished or skipped. */
+fun showSignInStep(driveSupported: Boolean, s: AppSettings): Boolean =
+    driveSupported && !s.signInStepDone && s.driveAccount.isBlank()
 
 fun mimeOf(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
     "jpg", "jpeg" -> "image/jpeg"

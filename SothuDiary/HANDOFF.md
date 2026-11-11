@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-11 18:00 IST, by Hark (project agent): added the first-launch Google sign-in requirement under Yet to start. Code is still v3.0.2 `a4ec96d` (CI 42963695478 success). Doc-only commit.
+Last updated: 2026-11-11 18:10 IST, by Hark (project agent): v3.1.0 first-launch Google sign-in screen (desktop tests pass locally incl. V310Test; CI result below once known).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -77,6 +77,18 @@ Last updated: 2026-11-11 18:00 IST, by Hark (project agent): added the first-lau
   network errors (`DocRules.NET_RETRY_WAITS_MS` 4 s, 10 s), `DocText.pagesDone` + `transcribeDoc(resume, onBatch)` save
   every batch and continue from the last page, "Ask again" button (`Repository.removeLastDocChat`), page JPEG 1400 px / 80.
   Still unknown why one 2-page call took 123 s (slow upload or Gemini thinking); if it repeats, try 1 page per call.
+
+## v3.1.0 first-launch Google sign-in – owner request 2026-11-11 17:55 IST; desktop tests pass (V310Test, V300Test); needs a phone test
+- `ui/screens/SignInScreen.kt` `FirstSignInScreen`: full screen before Home (App.kt checks
+  `domain/drive/DriveSync.kt showSignInStep(platform.driveSupported, settings)` = Android && !signInStepDone && no
+  driveAccount; so existing installs see it once too). Sign in → `DriveSync.connect`; no backup on Drive → first
+  backup (force) ; phone empty → `restore(USE_DRIVE)`; both have data → `DriveRestoreChoiceDialog` (moved out of
+  `DriveCard.kt`, shared). Skip / பிறகு sets `AppSettings.signInStepDone` (`Repository.setSignInStepDone`).
+- AI key restore: the whole `AppSettings` (Gemini key/model, `llmProvider`, `llmKeys`, `llmModels`) is already inside
+  `sothu_diary.json`; USE_DRIVE takes it. NEW `mergeAiSettings` makes MERGE take Drive's keys when the phone has none
+  (phone keys win). `applyDriveBackup` keeps the phone's `signInStepDone`. Strings `i18n/Strings310.kt` (S310).
+- Note: the backup file holds the AI key in plain JSON in the user's own Drive appDataFolder (only this app can read it).
+- UNVERIFIED (phone): consent flow from this screen, restore on a second phone, layout in Tamil.
 
 ## v3.0.1 AI key card – `ad83423`, CI 42841804054 success (APK + desktop tests incl. V301Test)
 - `ui/screens/AiKeyCard.kt` (`AiKeyCard`, `maskKey`), `i18n/Strings301.kt` (S31), SettingsScreen: the provider / key /
@@ -152,15 +164,5 @@ Last updated: 2026-11-11 18:00 IST, by Hark (project agent): added the first-lau
   (d) no "open the file" button yet on the Documents list (not done). (b) was fixed in v2.9.0 (property delete removes document files).
 
 ## Yet to start
-- **TOP PRIORITY (owner, 2026-11-11 17:55 IST, after installing v3.0.2): Google sign-in as the FIRST setup step.**
-  Today a fresh install goes straight to the AI provider / Gemini key screen and never asks for Google login; Drive
-  connect is only in Settings. Owner wants: on first launch, before the AI key step, a "Sign in with Google /
-  Google கணக்கில் உள்நுழை" screen (reuse the 3.0.0 AuthorizationClient + `drive.appdata` flow in
-  `domain/drive/DriveSync.kt` / `ui/screens/DriveCard.kt`). After sign-in: if Drive has `sothu_diary.json`, restore
-  everything (properties, files, and the saved AI provider/key/model if they are in the backup – check whether
-  settings are in `exportJson`; if not, back them up too) and skip steps already restored; then turn auto-backup on.
-  Offer "Skip / பிறகு" so the app still works offline. Same Gmail on another phone must bring everything back
-  without typing the key again. Only harksathya@gmail.com is a test user in the OAuth consent screen.
-  Not started: Hark usage pool was 99% at 17:55 IST on 11 Nov (resets 7 Dec 2026 14:18 IST).
 - Nothing agreed with the owner is left. Other ideas offered, not chosen yet: offline Tamil OCR (Tesseract4Android), reminders for follow-ups, price
   comparison chart.

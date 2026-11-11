@@ -9,6 +9,13 @@ Debug APK (latest build): https://github.com/harksathya/test/releases/download/s
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
 
+## What's new in v3.1.0
+- First launch now opens a **Sign in with Google / Google கணக்கில் உள்நுழை** screen before anything else. If your
+  Drive already holds a Sothu Diary backup, it is restored: properties, photos, voice notes, documents and the saved
+  AI provider key / model, so a new phone with the same Gmail needs no setup. Otherwise the first backup is made and
+  auto-backup stays on. "Skip / பிறகு" keeps the app offline; you can connect later in Settings.
+- Merging a Drive backup into a phone that has no AI key now takes the key from Drive.
+
 ## What's new in v3.0.2
 
 - **Land check – nearby places even when the map servers are busy:** schools, hospitals / clinics, bus stops, markets,

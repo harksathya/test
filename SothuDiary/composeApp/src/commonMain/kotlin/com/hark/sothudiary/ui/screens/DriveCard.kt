@@ -99,30 +99,33 @@ fun DriveBackupCard(ctx: AppContext) {
         }
     }
 
-    val pending = choice
-    val drv = pending?.backup
-    if (pending != null && drv != null) {
-        val run = { c: RestoreChoice ->
-            choice = null
+    choice?.let { pending ->
+        DriveRestoreChoiceDialog(ctx, pending, onClose = { choice = null }) { c ->
             scope.launch {
                 if (DriveSync.restore(ctx.repo, ctx.platform, pending, c) && c != RestoreChoice.KEEP_PHONE) ctx.platform.toast(S30.restoreDone.of(lang))
             }
-            Unit
         }
-        AlertDialog(
-            onDismissRequest = { choice = null },
-            title = { Text(S30.chooseTitle.s()) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(S30.chooseBody.f(ctx.repo.data.properties.size, drv.properties.size))
-                    Text(S30.restoreBody.f(drv.properties.size), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { run(RestoreChoice.MERGE) }) { Text(S30.merge.s()) }
-                    TextButton(onClick = { run(RestoreChoice.USE_DRIVE) }) { Text(S30.useDrive.s()) }
-                    TextButton(onClick = { run(RestoreChoice.KEEP_PHONE) }) { Text(S30.keepPhone.s()) }
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { choice = null }) { Text(S.cancel.s()) } },
-        )
     }
+}
+
+/** 3.1.0: the keep / use / merge choice when both this phone and Drive hold data (Settings card and first-launch screen). */
+@Composable
+fun DriveRestoreChoiceDialog(ctx: AppContext, remote: DriveRemote, onClose: () -> Unit, onChoose: (RestoreChoice) -> Unit) {
+    val drv = remote.backup ?: return
+    val run = { c: RestoreChoice -> onClose(); onChoose(c) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(S30.chooseTitle.s()) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(S30.chooseBody.f(ctx.repo.data.properties.size, drv.properties.size))
+                Text(S30.restoreBody.f(drv.properties.size), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { run(RestoreChoice.MERGE) }) { Text(S30.merge.s()) }
+                TextButton(onClick = { run(RestoreChoice.USE_DRIVE) }) { Text(S30.useDrive.s()) }
+                TextButton(onClick = { run(RestoreChoice.KEEP_PHONE) }) { Text(S30.keepPhone.s()) }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onClose) { Text(S.cancel.s()) } },
+    )
 }

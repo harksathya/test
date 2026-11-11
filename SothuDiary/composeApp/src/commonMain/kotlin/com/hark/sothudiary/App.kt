@@ -212,7 +212,10 @@ fun App(
                     toggleLang = { repo.setLang(if (repo.data.settings.lang == Lang.EN) Lang.TA else Lang.EN) },
                     wide = wide,
                 )
-                if (wide) WideLayout(ctx) else PhoneLayout(ctx)
+                // 3.1.0: first launch asks for Google sign-in (Drive backup / restore) before anything else.
+                if (com.hark.sothudiary.domain.drive.showSignInStep(platform.driveSupported, repo.data.settings)) {
+                    com.hark.sothudiary.ui.screens.FirstSignInScreen(ctx)
+                } else if (wide) WideLayout(ctx) else PhoneLayout(ctx)
                 importCode?.let { code ->
                     val sp = remember(code) { com.hark.sothudiary.domain.share.decodeShare(code) }
                     com.hark.sothudiary.ui.screens.ImportSharedDialog(ctx, sp) { importCode = null }
