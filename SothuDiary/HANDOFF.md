@@ -5,7 +5,7 @@ to `main` too – always `git pull` / rebase before pushing). UPDATE this file i
 stop (rate limit, out of steps), so the next agent can continue. Keep each line short, factual and current; delete
 lines that are no longer true. Say what you verified and how (CI run, test, phone) versus what you only believe.
 
-Last updated: 2026-11-11 18:10 IST, by Hark (project agent): v3.1.0 first-launch Google sign-in screen (CI 43021806565 success, APK published).
+Last updated: 2026-11-11 18:45 IST, by Hark (project agent): v3.1.1 – Settings opens with the Google sign-in card (owner skipped the first-launch screen and could not find sign-in).
 
 ## Ground rules (from the owner)
 - Understand the code and recent commits before editing. Never break existing features.
@@ -77,6 +77,11 @@ Last updated: 2026-11-11 18:10 IST, by Hark (project agent): v3.1.0 first-launch
   network errors (`DocRules.NET_RETRY_WAITS_MS` 4 s, 10 s), `DocText.pagesDone` + `transcribeDoc(resume, onBatch)` save
   every batch and continue from the last page, "Ask again" button (`Repository.removeLastDocChat`), page JPEG 1400 px / 80.
   Still unknown why one 2-page call took 123 s (slow upload or Gemini thinking); if it repeats, try 1 page per call.
+
+## v3.1.1 sign-in card first in Settings – owner feedback 2026-11-11 18:37 IST
+- Owner skipped the 3.1.0 first-launch screen and could not find sign-in (it was the 3rd Settings card, "Connect Google Drive").
+  `DriveBackupCard` is now the first card in `SettingsScreen.kt`; S30.title "Google sign-in & Drive backup", S30.connect
+  "Sign in with Google"; S310.skipNote points there. No logic change.
 
 ## v3.1.0 first-launch Google sign-in – owner request 2026-11-11 17:55 IST; desktop tests pass (V310Test, V300Test); needs a phone test
 - `ui/screens/SignInScreen.kt` `FirstSignInScreen`: full screen before Home (App.kt checks

@@ -9,6 +9,10 @@ Debug APK (latest build): https://github.com/harksathya/test/releases/download/s
 
 **Agents:** read and keep [HANDOFF.md](HANDOFF.md) up to date (what is done, in progress, not working, yet to start).
 
+## What's new in v3.1.1
+- Skipped the sign-in screen? Settings now opens with **Google sign-in & Drive backup** as the first card, with a
+  **Sign in with Google / Google கணக்கில் உள்நுழை** button.
+
 ## What's new in v3.1.0
 - First launch now opens a **Sign in with Google / Google கணக்கில் உள்நுழை** screen before anything else. If your
   Drive already holds a Sothu Diary backup, it is restored: properties, photos, voice notes, documents and the saved

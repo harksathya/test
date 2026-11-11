@@ -62,7 +62,7 @@ import com.hark.sothudiary.ui.components.ChoiceChips
 import com.hark.sothudiary.ui.components.SectionCard
 import com.hark.sothudiary.domain.dec
 
-const val APP_VERSION = "3.1.0"
+const val APP_VERSION = "3.1.1"
 
 @Composable
 fun SettingsScreen(ctx: AppContext) {
@@ -78,6 +78,9 @@ fun SettingsScreen(ctx: AppContext) {
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // 3.1.1: Google sign-in + Drive backup first, so a user who skipped the first-launch screen finds it.
+            DriveBackupCard(ctx)
+
             if (!data.settings.hasAiKey) GeminiSetupCard(ctx, onDismiss = null)
 
             SectionCard(title = S.language.s()) {
@@ -103,9 +106,6 @@ fun SettingsScreen(ctx: AppContext) {
                     }
                 }
             }
-
-            // 3.0.0: Google Drive backup / sync.
-            DriveBackupCard(ctx)
 
             SectionCard(title = S.appearance.s()) {
                 ChoiceChips(ThemeMode.entries, data.settings.theme, { it.tr().s() }) { ctx.repo.setTheme(it) }

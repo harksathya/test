@@ -14,8 +14,8 @@ object S310 {
     val signIn = Tr("Sign in with Google", "Google கணக்கில் உள்நுழை")
     val skip = Tr("Skip for now", "பிறகு")
     val skipNote = Tr(
-        "You can connect later in Settings → Google Drive backup. Without sign-in, data stays only on this phone.",
-        "பின்னர் அமைப்புகள் → Google Drive காப்புப் பிரதியில் இணைக்கலாம். உள்நுழையாவிட்டால் தரவு இந்த போனில் மட்டும் இருக்கும்.",
+        "You can sign in later: Settings → Google sign-in (top card). Without sign-in, data stays only on this phone.",
+        "பின்னர் உள்நுழையலாம்: அமைப்புகள் → Google உள்நுழைவு (முதல் அட்டை). உள்நுழையாவிட்டால் தரவு இந்த போனில் மட்டும் இருக்கும்.",
     )
     val restored = Tr("Restored {0} properties from Drive.", "Drive-இலிருந்து {0} சொத்துகள் மீட்டெடுக்கப்பட்டன.")
     val ready = Tr("Signed in: {0}. Backup is on.", "உள்நுழைந்தது: {0}. காப்புப் பிரதி இயங்குகிறது.")

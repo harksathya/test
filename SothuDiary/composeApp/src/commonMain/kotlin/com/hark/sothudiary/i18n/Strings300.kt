@@ -2,7 +2,7 @@ package com.hark.sothudiary.i18n
 
 /** 3.0.0 strings: Google Drive backup / sync. */
 object S30 {
-    val title = Tr("Google Drive backup", "Google Drive காப்புப் பிரதி")
+    val title = Tr("Google sign-in & Drive backup", "Google உள்நுழைவு & Drive காப்புப் பிரதி")
     val body = Tr(
         "Keeps a copy of all properties, photos, voice notes and documents in your own Google Drive (a hidden app folder only this app can see). Sign in with the same Gmail on a new phone to get everything back.",
         "எல்லா சொத்துகள், படங்கள், குரல் குறிப்புகள், ஆவணங்களின் நகல் உங்கள் சொந்த Google Drive-இல் (இந்த ஆப் மட்டும் பார்க்கும் மறைந்த கோப்புறை) வைக்கப்படும். புதிய போனில் அதே Gmail-இல் உள்நுழைந்தால் அனைத்தும் திரும்ப வரும்.",
@@ -12,7 +12,7 @@ object S30 {
         "ஆப் Google சோதனை நிலையில் இருக்கும் வரை, சோதனை Gmail (harksathya@gmail.com) மட்டுமே இணைக்க முடியும்.",
     )
     val desktop = Tr("Google Drive backup works in the Android app.", "Google Drive காப்புப் பிரதி Android ஆப்பில் மட்டும்.")
-    val connect = Tr("Connect Google Drive", "Google Drive-ஐ இணை")
+    val connect = Tr("Sign in with Google", "Google கணக்கில் உள்நுழை")
     val account = Tr("Account: {0}", "கணக்கு: {0}")
     val lastBackup = Tr("Last backup: {0}", "கடைசி காப்புப் பிரதி: {0}")
     val never = Tr("Last backup: not yet", "கடைசி காப்புப் பிரதி: இன்னும் இல்லை")
